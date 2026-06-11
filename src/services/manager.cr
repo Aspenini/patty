@@ -12,6 +12,14 @@ module Patty::Services
       end
     end
 
+    def self.adapters=(adapters : Array(Adapter))
+      @@adapters = adapters
+    end
+
+    def self.reset_adapters!
+      @@adapters = nil
+    end
+
     def self.adapter_for(program : String) : Adapter?
       adapters.find(&.available?(program))
     end

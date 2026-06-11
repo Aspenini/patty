@@ -7,9 +7,9 @@ module Patty::Services
 
     def label : String
       case self
-      in .running?  then "running"
-      in .stopped?  then "stopped"
-      in .unknown?  then "unknown"
+      in .running?   then "running"
+      in .stopped?   then "stopped"
+      in .unknown?   then "unknown"
       in .not_found? then "not found"
       end
     end

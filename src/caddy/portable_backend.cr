@@ -11,7 +11,7 @@ module Patty::Caddy
     def bootstrap!
       Util::Paths.ensure_all!
       return if File.exists?(main_caddyfile)
-      File.write(main_caddyfile, caddyfile_content(enabled_dir))
+      Util::AtomicFile.write(main_caddyfile, caddyfile_content(enabled_dir))
     end
 
     def caddyfile_content(dir : String) : String

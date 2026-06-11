@@ -96,6 +96,14 @@ describe Patty::Profile do
     port_only = Patty::Profile.new(1, "X", "x", ":8080 {\n    respond \"hi\"\n}\n")
     port_only.open_url.should eq "http://localhost:8080"
   end
+
+  it "only exposes http and https open urls" do
+    Patty::Profile.new(1, "X", "x", "javascript://alert(1) {\n}\n").open_url.should be_nil
+    Patty::Profile.new(1, "X", "x", "file:///tmp/secret {\n}\n").open_url.should be_nil
+    Patty::Profile.new(1, "X", "x", "http:// {\n}\n").open_url.should be_nil
+    Patty::Profile.new(1, "X", "x", "http://localhost:8080 {\n}\n").open_url.should eq "http://localhost:8080"
+    Patty::Profile.new(1, "X", "x", "https://example.test {\n}\n").open_url.should eq "https://example.test"
+  end
 end
 
 describe Patty::Profiles::Store do

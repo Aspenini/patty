@@ -1,4 +1,5 @@
 require "yaml"
+require "uri"
 
 module Patty
   # A parsed .pattyfile. Simple format only in v0.0:
@@ -56,12 +57,20 @@ module Patty
         next if stripped.empty? || stripped.starts_with?('#')
         host = stripped.split(/[\s{,]/).first?.try(&.strip)
         next if host.nil? || host.empty?
-        return host if host.includes?("://")
-        if host.starts_with?(':')
-          return "http://localhost#{host}"
-        end
-        return "https://#{host}"
+        candidate =
+          if host.includes?("://")
+            host
+          elsif host.starts_with?(':')
+            "http://localhost#{host}"
+          else
+            "https://#{host}"
+          end
+        uri = URI.parse(candidate)
+        return nil unless {"http", "https"}.includes?(uri.scheme) && uri.host.try(&.presence)
+        return candidate
       end
+      nil
+    rescue URI::Error
       nil
     end
 

@@ -2,6 +2,8 @@ module Patty::Profiles
   # Profiles live as <id>.pattyfile in the profiles dir. Loaded fresh on each
   # request — file counts are tiny and it keeps things cache-free.
   module Store
+    @@mutation_mutex = Mutex.new
+
     def self.all : Array(Profile)
       Dir.glob(File.join(Util::Paths.profiles_dir, "*.pattyfile")).sort.compact_map do |path|
         begin
@@ -34,17 +36,21 @@ module Patty::Profiles
 
     # Assigns a collision-free id when missing, then writes canonical YAML.
     def self.save(profile : Profile) : Profile
-      Dir.mkdir_p(Util::Paths.profiles_dir)
-      if profile.id.nil?
-        profile.id = IdGenerator.generate(profile.name, ids)
+      @@mutation_mutex.synchronize do
+        Dir.mkdir_p(Util::Paths.profiles_dir)
+        if profile.id.nil?
+          profile.id = IdGenerator.generate(profile.name, ids)
+        end
+        Util::AtomicFile.write(path_for(profile.slug), profile.to_pattyfile)
+        profile
       end
-      File.write(path_for(profile.slug), profile.to_pattyfile)
-      profile
     end
 
     def self.delete(id : String)
-      path = path_for(id)
-      File.delete(path) if File.exists?(path)
+      @@mutation_mutex.synchronize do
+        path = path_for(id)
+        File.delete(path) if File.exists?(path)
+      end
     end
 
     def self.path_for(id : String) : String

@@ -17,20 +17,18 @@ end
 # --- auth gate -------------------------------------------------------------
 
 before_all do |env|
+  next if env.response.closed?
+
   path = env.request.path
   next if path.starts_with?("/static/")
 
   unless Patty::Auth.password_set?
-    unless path == "/setup"
-      env.redirect "/setup"
-      env.response.close
-    end
+    env.redirect "/setup" unless path == "/setup"
     next
   end
 
   if path == "/setup"
     env.redirect "/"
-    env.response.close
     next
   end
   next if path == "/login"
@@ -38,7 +36,6 @@ before_all do |env|
   session = Patty::Auth.session_for(env)
   unless session
     env.redirect "/login"
-    env.response.close
     next
   end
 
@@ -210,18 +207,17 @@ post "/profiles/:id" do |env|
   errors = Patty::Profiles::Validator.validate(profile)
 
   if errors.empty?
-    Patty::Profiles::Store.save(profile)
-    Patty::Util::ActionLog.log("Updated profile #{profile.slug}.")
-    message = "Profile #{profile.name} saved."
-    if Patty::Caddy::Snippets.enabled?(profile.slug)
-      refresh = Patty::Caddy::Manager.enable_route(profile)
-      Patty::Util::ActionLog.log(refresh.message)
-      message += " #{refresh.message}"
-      session.flash!(refresh.ok? ? "success" : "error", message)
+    result = Patty::Core::Actions.update_profile(existing.slug, profile)
+    if result.ok?
+      session.flash(result)
+      env.redirect "/profiles/#{profile.slug}"
     else
-      session.flash!("success", message)
+      errors << result.message
+      if detail = result.detail
+        errors << detail
+      end
+      page(:profile_form)
     end
-    env.redirect "/profiles/#{profile.slug}"
   else
     page(:profile_form)
   end

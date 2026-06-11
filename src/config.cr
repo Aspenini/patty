@@ -55,8 +55,7 @@ module Patty
     end
 
     def save
-      Dir.mkdir_p(Util::Paths.data_dir)
-      File.write(Util::Paths.config_file, to_yaml)
+      Util::AtomicFile.write(Util::Paths.config_file, to_yaml)
     end
   end
 end

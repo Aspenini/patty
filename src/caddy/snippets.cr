@@ -15,8 +15,7 @@ module Patty::Caddy
     end
 
     def self.write(id : String, content : String)
-      Dir.mkdir_p(Util::Paths.enabled_dir)
-      File.write(path_for(id), content)
+      Util::AtomicFile.write(path_for(id), content)
     end
 
     def self.remove(id : String)
