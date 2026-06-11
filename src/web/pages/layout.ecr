@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Patty</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/">&#129383; Patty</a>
+    <nav>
+      <a href="/">Dashboard</a>
+      <a href="/profiles/new">Create</a>
+      <a href="/import">Import</a>
+      <a href="/settings">Settings</a>
+      <a href="/logs">Logs</a>
+      <form method="post" action="/logout" class="inline">
+        <input type="hidden" name="csrf_token" value="<%= csrf %>">
+        <button class="linklike" type="submit">Logout</button>
+      </form>
+    </nav>
+  </header>
+  <main>
+    <% if f = flash %>
+      <div class="flash flash-<%= f[0] %>"><%= nl2br(f[1]) %></div>
+    <% end %>
+    <%= content %>
+  </main>
+  <script src="/static/app.js"></script>
+</body>
+</html>

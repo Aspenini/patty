@@ -1,0 +1,45 @@
+<h1><%= h(profile.name) %></h1>
+
+<div class="panel">
+  <p class="kv"><span class="k">Program/service</span> <code><%= h(profile.program) %></code></p>
+  <p class="kv"><span class="k">Adapter</span> <%= status.adapter ? h(status.adapter) : "none detected" %></p>
+  <p class="kv"><span class="k">Service status</span>
+    <span class="badge <%= status.service.running? ? "ok" : "off" %>" data-service="<%= status.id %>"><%= status.service.label %></span>
+  </p>
+  <p class="kv"><span class="k">Caddy route</span>
+    <span class="badge <%= status.route_enabled ? "ok" : "off" %>" data-route="<%= status.id %>">route <%= status.route_enabled ? "enabled" : "disabled" %></span>
+  </p>
+  <% if d = profile.description %><p class="kv"><span class="k">Description</span> <%= h(d) %></p><% end %>
+  <% if c = profile.category %><p class="kv"><span class="k">Category</span> <%= h(c) %></p><% end %>
+  <p class="kv"><span class="k">Profile id</span> <code><%= profile.slug %></code></p>
+</div>
+
+<div class="actions" style="margin-bottom: 1.2rem;">
+  <% if url = status.open_url %>
+    <a class="btn" href="<%= h(url) %>" target="_blank" rel="noopener">Open</a>
+  <% end %>
+  <% {"start", "stop", "restart", "enable-route", "disable-route"}.each do |action| %>
+    <form class="inline" method="post" action="/profiles/<%= profile.slug %>/<%= action %>">
+      <input type="hidden" name="csrf_token" value="<%= csrf %>">
+      <button class="btn" type="submit"><%= action.split('-').map(&.capitalize).join(' ') %></button>
+    </form>
+  <% end %>
+  <form class="inline" method="post" action="/caddy/validate">
+    <input type="hidden" name="csrf_token" value="<%= csrf %>">
+    <button class="btn" type="submit">Validate Caddy</button>
+  </form>
+  <form class="inline" method="post" action="/caddy/reload">
+    <input type="hidden" name="csrf_token" value="<%= csrf %>">
+    <button class="btn" type="submit">Reload Caddy</button>
+  </form>
+  <a class="btn" href="/profiles/<%= profile.slug %>/edit">Edit</a>
+  <a class="btn" href="/profiles/<%= profile.slug %>/export">Export</a>
+  <form class="inline" method="post" action="/profiles/<%= profile.slug %>/delete"
+        onsubmit="return confirm('Delete this profile? Its route will be disabled first.');">
+    <input type="hidden" name="csrf_token" value="<%= csrf %>">
+    <button class="btn danger" type="submit">Delete</button>
+  </form>
+</div>
+
+<h2>Caddy snippet</h2>
+<pre class="snippet"><%= h(profile.caddy) %></pre>

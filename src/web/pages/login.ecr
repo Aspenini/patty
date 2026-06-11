@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Patty — Login</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="auth-wrap">
+    <h1>&#129383; Patty</h1>
+    <p class="empty">Pick your Caddy.</p>
+    <% if error %>
+      <div class="flash flash-error"><%= h(error.to_s) %></div>
+    <% end %>
+    <div class="panel">
+      <form method="post" action="/login">
+        <label for="password">Admin password</label>
+        <input type="password" id="password" name="password" autofocus required>
+        <p style="margin-top: 1rem;">
+          <button class="btn primary" type="submit">Log in</button>
+        </p>
+      </form>
+    </div>
+  </div>
+</body>
+</html>

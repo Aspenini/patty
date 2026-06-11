@@ -1,0 +1,66 @@
+<section class="statusbar">
+  <div>
+    Caddy:
+    <span id="caddy-status" class="badge <%= snapshot.caddy_running ? "ok" : "warn" %>"><%=
+      snapshot.caddy_found ? (snapshot.caddy_running ? "running" : "found, not running") : "not found"
+    %></span>
+  </div>
+  <div class="spacer"></div>
+  <form method="post" action="/caddy/validate" class="inline">
+    <input type="hidden" name="csrf_token" value="<%= csrf %>">
+    <button class="btn" type="submit">Validate Caddy</button>
+  </form>
+  <form method="post" action="/caddy/reload" class="inline">
+    <input type="hidden" name="csrf_token" value="<%= csrf %>">
+    <button class="btn" type="submit">Reload Caddy</button>
+  </form>
+</section>
+
+<% if snapshot.profiles.empty? %>
+  <p class="empty">No profiles yet. <a href="/profiles/new">Create one</a> or <a href="/import">import a .pattyfile</a>.</p>
+<% end %>
+
+<section class="cards">
+  <% snapshot.profiles.each do |p| %>
+    <article class="card">
+      <h2><a href="/profiles/<%= p.id %>"><%= h(p.name) %></a></h2>
+      <p class="meta">program: <code><%= h(p.program) %></code></p>
+      <% if d = p.description %><p class="meta"><%= h(d) %></p><% end %>
+      <p>
+        <span class="badge <%= p.service.running? ? "ok" : "off" %>" data-service="<%= p.id %>"><%= p.service.label %></span>
+        <span class="badge <%= p.route_enabled ? "ok" : "off" %>" data-route="<%= p.id %>">route <%= p.route_enabled ? "enabled" : "disabled" %></span>
+      </p>
+      <div class="actions">
+        <% if url = p.open_url %>
+          <a class="btn" href="<%= h(url) %>" target="_blank" rel="noopener">Open</a>
+        <% end %>
+        <% if p.service.running? %>
+          <form class="inline" method="post" action="/profiles/<%= p.id %>/stop">
+            <input type="hidden" name="csrf_token" value="<%= csrf %>">
+            <button class="btn" type="submit">Stop</button>
+          </form>
+          <form class="inline" method="post" action="/profiles/<%= p.id %>/restart">
+            <input type="hidden" name="csrf_token" value="<%= csrf %>">
+            <button class="btn" type="submit">Restart</button>
+          </form>
+        <% else %>
+          <form class="inline" method="post" action="/profiles/<%= p.id %>/start">
+            <input type="hidden" name="csrf_token" value="<%= csrf %>">
+            <button class="btn primary" type="submit">Start</button>
+          </form>
+        <% end %>
+        <% if p.route_enabled %>
+          <form class="inline" method="post" action="/profiles/<%= p.id %>/disable-route">
+            <input type="hidden" name="csrf_token" value="<%= csrf %>">
+            <button class="btn" type="submit">Disable Route</button>
+          </form>
+        <% else %>
+          <form class="inline" method="post" action="/profiles/<%= p.id %>/enable-route">
+            <input type="hidden" name="csrf_token" value="<%= csrf %>">
+            <button class="btn" type="submit">Enable Route</button>
+          </form>
+        <% end %>
+      </div>
+    </article>
+  <% end %>
+</section>

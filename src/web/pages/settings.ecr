@@ -1,0 +1,47 @@
+<h1>Settings</h1>
+
+<div class="panel">
+  <form method="post" action="/settings">
+    <input type="hidden" name="csrf_token" value="<%= csrf %>">
+
+    <h2>Server</h2>
+    <label for="bind">Bind address</label>
+    <input type="text" id="bind" name="bind" value="<%= h(config.server.bind) %>">
+    <p class="hint">Keep 127.0.0.1 unless you really want LAN access.</p>
+
+    <label for="port">Port</label>
+    <input type="number" id="port" name="port" value="<%= config.server.port %>">
+    <p class="hint">Server changes take effect after restarting Patty.</p>
+
+    <h2>Caddy</h2>
+    <label for="caddy_binary">Caddy binary</label>
+    <input type="text" id="caddy_binary" name="caddy_binary" value="<%= h(config.caddy.binary) %>">
+
+    <div class="checkbox-row">
+      <input type="checkbox" id="validate_before_reload" name="validate_before_reload"
+             <%= config.caddy.validate_before_reload ? "checked" : "" %>>
+      <label for="validate_before_reload">Validate config before applying route changes</label>
+    </div>
+    <div class="checkbox-row">
+      <input type="checkbox" id="reload_after_apply" name="reload_after_apply"
+             <%= config.caddy.reload_after_apply ? "checked" : "" %>>
+      <label for="reload_after_apply">Reload Caddy after applying route changes</label>
+    </div>
+
+    <p style="margin-top: 1rem;">
+      <button class="btn primary" type="submit">Save Settings</button>
+    </p>
+  </form>
+</div>
+
+<div class="panel">
+  <h2>Paths</h2>
+  <p class="kv"><span class="k">Data dir</span> <code><%= h(Patty::Util::Paths.data_dir) %></code></p>
+  <p class="kv"><span class="k">Profiles</span> <code><%= h(Patty::Util::Paths.profiles_dir) %></code></p>
+  <p class="kv"><span class="k">Enabled snippets</span> <code><%= h(Patty::Util::Paths.enabled_dir) %></code></p>
+  <p class="kv"><span class="k">Main Caddyfile</span> <code><%= h(Patty::Util::Paths.active_caddyfile) %></code></p>
+  <p class="kv"><span class="k">Log file</span> <code><%= h(Patty::Util::Paths.log_file) %></code></p>
+  <p class="hint">Run Caddy against the main Caddyfile with:
+    <code>caddy run --config "<%= h(Patty::Util::Paths.active_caddyfile) %>" --adapter caddyfile</code>
+  </p>
+</div>

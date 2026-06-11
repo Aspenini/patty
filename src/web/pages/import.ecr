@@ -1,0 +1,16 @@
+<h1>Import .pattyfile</h1>
+
+<% if import_error %>
+  <ul class="errors"><li><%= nl2br(import_error.to_s) %></li></ul>
+<% end %>
+
+<div class="panel">
+  <form method="post" action="/import" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="<%= csrf %>">
+    <label for="pattyfile">Choose a .pattyfile</label>
+    <input type="file" id="pattyfile" name="pattyfile" accept=".pattyfile,.yml,.yaml" required>
+    <p style="margin-top: 1rem;">
+      <button class="btn primary" type="submit">Preview Import</button>
+    </p>
+  </form>
+</div>

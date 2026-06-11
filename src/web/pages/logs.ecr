@@ -1,0 +1,7 @@
+<h1>Logs</h1>
+
+<% if lines.empty? %>
+  <p class="empty">No actions logged yet.</p>
+<% else %>
+  <div class="loglines"><%= lines.map { |line| h(line) }.join('\n') %></div>
+<% end %>

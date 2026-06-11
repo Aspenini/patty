@@ -1,0 +1,20 @@
+name: patty
+version: 0.0.1
+description: |
+  Patty — pick your Caddy. A local/LAN web app for managing installed apps
+  and their Caddy routes.
+
+authors:
+  - Aspen Feltner
+
+targets:
+  patty:
+    main: src/patty.cr
+
+dependencies:
+  kemal:
+    github: kemalcr/kemal
+
+crystal: ">= 1.20.0"
+
+license: MIT
