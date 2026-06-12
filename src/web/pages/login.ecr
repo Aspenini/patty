@@ -4,11 +4,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Patty — Login</title>
+  <link rel="icon" type="image/png" href="/static/icon.png">
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
   <div class="auth-wrap">
-    <h1>&#129383; Patty</h1>
+    <h1 class="auth-title"><img src="/static/icon.png" alt="">Patty</h1>
     <p class="empty">Pick your Caddy.</p>
     <% if error %>
       <div class="flash flash-error"><%= h(error.to_s) %></div>

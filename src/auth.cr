@@ -3,7 +3,7 @@ require "crypto/bcrypt/password"
 
 module Patty
   # Single-admin auth. The bcrypt hash lives in auth.yml; sessions are
-  # in-memory (a Patty restart logs everyone out, which is fine for v0.0).
+  # in-memory, so a Patty restart logs everyone out.
   module Auth
     SESSION_COOKIE  = "patty_session"
     SESSION_MAX_AGE = 7.days

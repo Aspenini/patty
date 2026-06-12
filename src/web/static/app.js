@@ -24,6 +24,15 @@ async function pattyPoll() {
         route.textContent = "route " + (p.route_enabled ? "enabled" : "disabled");
         route.className = "badge " + (p.route_enabled ? "ok" : "off");
       }
+      const health = document.querySelector(`[data-health="${CSS.escape(p.id)}"]`);
+      if (health) {
+        health.textContent = p.health_label;
+        health.title = p.health_detail;
+        const healthClass = p.health === "healthy"
+          ? "ok"
+          : (p.health === "unhealthy" ? "error" : (p.health === "unknown" ? "warn" : "off"));
+        health.className = "badge " + healthClass;
+      }
     }
   } catch (_) {
     // server briefly unavailable; try again next tick

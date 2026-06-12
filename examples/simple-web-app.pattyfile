@@ -1,7 +1,3 @@
-patty: 1
-
-name: My Local App
-description: A locally installed web app
 program: my-app
 
 caddy: |

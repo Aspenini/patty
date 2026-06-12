@@ -2,18 +2,77 @@ require "./spec_helper"
 
 private def action_profile : Patty::Profile
   Patty::Profile.new(
-    1,
-    "Action App",
-    "action-app",
-    "action.localhost {\n    reverse_proxy 127.0.0.1:4321\n}\n",
+    caddy: "action.localhost {\n    reverse_proxy 127.0.0.1:4321\n}\n",
+    program: "action-app",
     id: "action-app")
+end
+
+private def caddy_only_profile : Patty::Profile
+  Patty::Profile.new(
+    caddy: "files.localhost {\n    root * /srv/files\n    file_server\n}\n",
+    id: "static-files")
 end
 
 private def save_action_profile : Patty::Profile
   Patty::Profiles::Store.save(action_profile)
 end
 
+private def with_profile_mutation_blocked(path : String, & : -> Patty::Result) : Patty::Result
+  {% if flag?(:windows) %}
+    handle = LibC.CreateFileW(
+      Crystal::System.to_wstr(path),
+      LibC::GENERIC_READ,
+      LibC::FILE_SHARE_READ | LibC::FILE_SHARE_WRITE,
+      nil,
+      LibC::OPEN_EXISTING,
+      LibC::FILE_ATTRIBUTE_NORMAL,
+      LibC::HANDLE.null)
+    raise "could not lock test profile" if handle == LibC::INVALID_HANDLE_VALUE
+    begin
+      yield
+    ensure
+      LibC.CloseHandle(handle)
+    end
+  {% else %}
+    dir = File.dirname(path)
+    File.chmod(dir, 0o555)
+    begin
+      yield
+    ensure
+      File.chmod(dir, 0o755)
+    end
+  {% end %}
+end
+
 describe Patty::Core::Actions do
+  it "starts and stops Caddy-only profiles without invoking service adapters" do
+    fresh_home!
+    profile = Patty::Profiles::Store.save(caddy_only_profile)
+    service = FakeServiceAdapter.new(Patty::Services::Status::Stopped)
+    Patty::Services::Manager.adapters = [service] of Patty::Services::Adapter
+    Patty::Caddy.runtime = FakeCaddyRuntime.new
+
+    Patty::Core::Actions.start_profile(profile.slug).ok?.should be_true
+    Patty::Caddy::Snippets.enabled?(profile.slug).should be_true
+
+    Patty::Core::Actions.stop_profile(profile.slug).ok?.should be_true
+    Patty::Caddy::Snippets.enabled?(profile.slug).should be_false
+    service.actions.should be_empty
+  end
+
+  it "refuses to restart a Caddy-only profile without invoking service adapters" do
+    fresh_home!
+    profile = Patty::Profiles::Store.save(caddy_only_profile)
+    service = FakeServiceAdapter.new(Patty::Services::Status::Stopped)
+    Patty::Services::Manager.adapters = [service] of Patty::Services::Adapter
+
+    result = Patty::Core::Actions.restart_profile(profile.slug)
+
+    result.ok?.should be_false
+    result.message.should contain "no program"
+    service.actions.should be_empty
+  end
+
   it "stops a newly-started service when route enable fails" do
     fresh_home!
     profile = save_action_profile
@@ -142,16 +201,14 @@ describe Patty::Core::Actions do
     runtime.validate_results << Patty::Result.failure("validation failed", "new snippet invalid")
     Patty::Caddy.runtime = runtime
     edited = Patty::Profile.new(
-      1,
-      "Edited App",
-      original.program,
-      "edited.localhost {\n    respond \"new\"\n}\n",
+      caddy: "edited.localhost {\n    respond \"new\"\n}\n",
+      program: original.program,
       id: original.slug)
 
     result = Patty::Core::Actions.update_profile(original.slug, edited)
 
     result.ok?.should be_false
-    Patty::Profiles::Store.find(original.slug).not_nil!.name.should eq original.name
+    Patty::Profiles::Store.find(original.slug).not_nil!.caddy.should eq original.caddy
     File.read(Patty::Caddy::Snippets.path_for(original.slug)).should eq original_snippet
   end
 
@@ -162,21 +219,16 @@ describe Patty::Core::Actions do
     Patty::Caddy::Snippets.write(original.slug, original_snippet)
     Patty::Caddy.runtime = FakeCaddyRuntime.new
     edited = Patty::Profile.new(
-      1,
-      "Edited App",
-      original.program,
-      "edited.localhost {\n    respond \"new\"\n}\n",
+      caddy: "edited.localhost {\n    respond \"new\"\n}\n",
+      program: original.program,
       id: original.slug)
 
-    File.chmod(Patty::Util::Paths.profiles_dir, 0o555)
-    begin
-      result = Patty::Core::Actions.update_profile(original.slug, edited)
-    ensure
-      File.chmod(Patty::Util::Paths.profiles_dir, 0o755)
+    result = with_profile_mutation_blocked(Patty::Profiles::Store.path_for(original.slug)) do
+      Patty::Core::Actions.update_profile(original.slug, edited)
     end
 
     result.ok?.should be_false
-    Patty::Profiles::Store.find(original.slug).not_nil!.name.should eq original.name
+    Patty::Profiles::Store.find(original.slug).not_nil!.caddy.should eq original.caddy
     File.read(Patty::Caddy::Snippets.path_for(original.slug)).should eq original_snippet
   end
 
@@ -203,11 +255,8 @@ describe Patty::Core::Actions do
     Patty::Caddy::Snippets.write(profile.slug, original_snippet)
     Patty::Caddy.runtime = FakeCaddyRuntime.new
 
-    File.chmod(Patty::Util::Paths.profiles_dir, 0o555)
-    begin
-      result = Patty::Core::Actions.delete_profile(profile.slug)
-    ensure
-      File.chmod(Patty::Util::Paths.profiles_dir, 0o755)
+    result = with_profile_mutation_blocked(Patty::Profiles::Store.path_for(profile.slug)) do
+      Patty::Core::Actions.delete_profile(profile.slug)
     end
 
     result.ok?.should be_false

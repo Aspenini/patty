@@ -1,6 +1,5 @@
 module Patty::Services
-  # Picks the first adapter that can control a given program
-  # (detection order per spec §13; only brew ships in v0.0).
+  # Picks the platform-native adapter that can control a given program.
   module Manager
     @@adapters : Array(Adapter)?
 
@@ -8,6 +7,8 @@ module Patty::Services
       @@adapters ||= begin
         list = [] of Adapter
         list << MacBrewAdapter.new if Util::Platform.macos?
+        list << LinuxSystemdAdapter.new if Util::Platform.linux?
+        list << WindowsServiceAdapter.new if Util::Platform.windows?
         list
       end
     end
@@ -50,7 +51,17 @@ module Patty::Services
         yield adapter
       else
         Result.failure("No service adapter found for \"#{program}\".",
-          "Install it as a Homebrew service (brew install #{program}) or check the program name.")
+          adapter_hint(program))
+      end
+    end
+
+    private def self.adapter_hint(program : String) : String
+      if Util::Platform.windows?
+        "Use the Windows service name shown in Services, then make sure Patty has permission to control it."
+      elsif Util::Platform.linux?
+        "Install #{program} as a systemd system service or check the unit name."
+      else
+        "Install it as a Homebrew service (brew install #{program}) or check the program name."
       end
     end
   end

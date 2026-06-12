@@ -1,0 +1,5 @@
+caddy: |
+  files.localhost {
+      root * /srv/files
+      file_server
+  }

@@ -1,6 +1,3 @@
-patty: 1
-
-name: Jellyfin
 program: jellyfin
 
 caddy: |

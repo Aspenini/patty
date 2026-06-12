@@ -1,7 +1,15 @@
 <h1>Logs</h1>
 
-<% if lines.empty? %>
+<h2>Patty actions</h2>
+<% if patty_lines.empty? %>
   <p class="empty">No actions logged yet.</p>
 <% else %>
-  <div class="loglines"><%= lines.map { |line| h(line) }.join('\n') %></div>
+  <div class="loglines"><%= patty_lines.map { |line| h(line) }.join('\n') %></div>
+<% end %>
+
+<h2>Caddy</h2>
+<% if caddy_lines.empty? %>
+  <p class="empty">No Caddy output logged yet.</p>
+<% else %>
+  <div class="loglines"><%= caddy_lines.map { |line| h(line) }.join('\n') %></div>
 <% end %>

@@ -8,7 +8,7 @@
   <form method="post" action="/import" enctype="multipart/form-data">
     <input type="hidden" name="csrf_token" value="<%= csrf %>">
     <label for="pattyfile">Choose a .pattyfile</label>
-    <input type="file" id="pattyfile" name="pattyfile" accept=".pattyfile,.yml,.yaml" required>
+    <input type="file" id="pattyfile" name="pattyfile" accept=".pattyfile" required>
     <p style="margin-top: 1rem;">
       <button class="btn primary" type="submit">Preview Import</button>
     </p>

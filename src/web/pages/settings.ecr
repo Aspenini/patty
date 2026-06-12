@@ -1,5 +1,11 @@
 <h1>Settings</h1>
 
+<% unless errors.empty? %>
+  <ul class="errors">
+    <% errors.each do |error| %><li><%= h(error) %></li><% end %>
+  </ul>
+<% end %>
+
 <div class="panel">
   <form method="post" action="/settings">
     <input type="hidden" name="csrf_token" value="<%= csrf %>">
@@ -16,6 +22,24 @@
     <h2>Caddy</h2>
     <label for="caddy_binary">Caddy binary</label>
     <input type="text" id="caddy_binary" name="caddy_binary" value="<%= h(config.caddy.binary) %>">
+
+    <h2>Dashboard forwarding</h2>
+    <label for="dashboard_address">Dashboard address</label>
+    <input type="text" id="dashboard_address" name="dashboard_address"
+           value="<%= h(config.caddy.dashboard_address.to_s) %>"
+           placeholder="patty.example.com">
+    <p class="hint">
+      Optional. Enter a hostname or full <code>http://</code>/<code>https://</code> address.
+      Patty creates and manages a Caddy route back to <code><%= h(config.server.bind) %>:<%= config.server.port %></code>.
+      Leave this empty to remove the route.
+    </p>
+    <% if address = dashboard_browser_url(config) %>
+      <p>
+        <a class="btn" href="<%= h(address) %>"
+           target="_blank" rel="noopener">Open forwarded dashboard</a>
+      </p>
+    <% end %>
+    <p class="hint">The dashboard still requires the Patty admin password. Public DNS and ports 80/443 must point to this Caddy server.</p>
 
     <div class="checkbox-row">
       <input type="checkbox" id="validate_before_reload" name="validate_before_reload"
@@ -35,13 +59,33 @@
 </div>
 
 <div class="panel">
+  <h2>Automatic startup</h2>
+  <p class="kv"><span class="k">Status</span>
+    <span class="badge <%= autostart ? "ok" : "off" %>"><%= autostart ? "installed" : "not installed" %></span>
+  </p>
+  <p class="hint">Uses a Scheduled Task on Windows, a LaunchAgent on macOS, or a user systemd unit on Linux.</p>
+  <% if autostart %>
+    <form method="post" action="/settings/autostart/uninstall">
+      <input type="hidden" name="csrf_token" value="<%= csrf %>">
+      <button class="btn" type="submit">Remove automatic startup</button>
+    </form>
+  <% else %>
+    <form method="post" action="/settings/autostart/install">
+      <input type="hidden" name="csrf_token" value="<%= csrf %>">
+      <button class="btn primary" type="submit">Start Patty after sign-in</button>
+    </form>
+  <% end %>
+</div>
+
+<div class="panel">
   <h2>Paths</h2>
   <p class="kv"><span class="k">Data dir</span> <code><%= h(Patty::Util::Paths.data_dir) %></code></p>
   <p class="kv"><span class="k">Profiles</span> <code><%= h(Patty::Util::Paths.profiles_dir) %></code></p>
   <p class="kv"><span class="k">Enabled snippets</span> <code><%= h(Patty::Util::Paths.enabled_dir) %></code></p>
   <p class="kv"><span class="k">Main Caddyfile</span> <code><%= h(Patty::Util::Paths.active_caddyfile) %></code></p>
   <p class="kv"><span class="k">Log file</span> <code><%= h(Patty::Util::Paths.log_file) %></code></p>
-  <p class="hint">Run Caddy against the main Caddyfile with:
+  <p class="kv"><span class="k">Caddy log</span> <code><%= h(Patty::Util::Paths.caddy_log_file) %></code></p>
+  <p class="hint">Patty starts Caddy automatically when needed. The equivalent manual command is:
     <code>caddy run --config "<%= h(Patty::Util::Paths.active_caddyfile) %>" --adapter caddyfile</code>
   </p>
 </div>

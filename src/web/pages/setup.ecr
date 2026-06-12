@@ -4,11 +4,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Patty — First-run Setup</title>
+  <link rel="icon" type="image/png" href="/static/icon.png">
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
   <div class="auth-wrap">
-    <h1>&#129383; Welcome to Patty</h1>
+    <h1 class="auth-title"><img src="/static/icon.png" alt="">Welcome to Patty</h1>
     <p class="empty">Set an admin password to protect the dashboard.</p>
     <% if error %>
       <div class="flash flash-error"><%= h(error.to_s) %></div>

@@ -28,7 +28,12 @@ module Patty::Caddy
     end
 
     def self.files : Array(String)
-      Dir.glob(File.join(Util::Paths.enabled_dir, "*.caddy")).sort
+      return [] of String unless Dir.exists?(Util::Paths.enabled_dir)
+
+      Dir.children(Util::Paths.enabled_dir)
+        .select(&.ends_with?(".caddy"))
+        .sort
+        .map { |filename| File.join(Util::Paths.enabled_dir, filename) }
     end
   end
 end

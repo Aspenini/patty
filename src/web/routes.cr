@@ -5,6 +5,7 @@ require "json"
 
 STYLE_CSS = {{ read_file("#{__DIR__}/static/style.css") }}
 APP_JS    = {{ read_file("#{__DIR__}/static/app.js") }}
+ICON_PNG  = {{ read_file("#{__DIR__}/../../icons/icon.png") }}
 
 macro page(name)
   render "src/web/pages/{{name.id}}.ecr", "src/web/pages/layout.ecr"
@@ -12,6 +13,13 @@ end
 
 macro bare_page(name)
   render "src/web/pages/{{name.id}}.ecr"
+end
+
+def dashboard_browser_url(config : Patty::Config) : String?
+  address = config.caddy.dashboard_address
+  address ? Patty::Caddy::DashboardAddress.browser_url(address) : nil
+rescue ArgumentError
+  nil
 end
 
 # --- auth gate -------------------------------------------------------------
@@ -138,10 +146,11 @@ post "/profiles" do |env|
   form_action = "/profiles"
 
   v = form_values(env)
-  profile = profile_from_form(v, id: v["id"]?.presence)
+  profile = profile_from_form(v, id: v["id"]?.try(&.strip.presence))
   errors = Patty::Profiles::Validator.validate(profile)
+  errors << "filename must not be empty" unless profile.id
   if (custom_id = profile.id) && Patty::Profiles::Store.exists?(custom_id)
-    errors << "a profile with id \"#{custom_id}\" already exists"
+    errors << "a Pattyfile named \"#{custom_id}.pattyfile\" already exists"
   end
 
   if errors.empty?
@@ -177,12 +186,9 @@ get "/profiles/:id/edit" do |env|
     form_action = "/profiles/#{profile.slug}"
     errors = [] of String
     v = {
-      "name"        => profile.name,
-      "program"     => profile.program,
-      "caddy"       => profile.caddy,
-      "description" => profile.description.to_s,
-      "category"    => profile.category.to_s,
-      "id"          => profile.slug,
+      "program" => profile.program.to_s,
+      "caddy"   => profile.caddy,
+      "id"      => profile.slug,
     }
     page(:profile_form)
   else
@@ -265,13 +271,20 @@ post "/import" do |env|
 
   content = File.read(upload.tempfile.path)
   begin
+    filename = upload.filename || "profile.pattyfile"
+    unless filename.downcase.ends_with?(".pattyfile")
+      import_error = "Choose a file ending in .pattyfile."
+      next page(:import)
+    end
+
     preview = Patty::Profiles::Parser.parse(content)
     validation = Patty::Profiles::Validator.validate(preview)
     unless validation.empty?
       import_error = "This .pattyfile is not valid:\n" + validation.join("\n")
       next page(:import)
     end
-    final_id = import_id_for(preview)
+    final_id = import_id_for(filename)
+    preview.id = final_id
     page(:import_preview)
   rescue ex : Patty::Profiles::ParseError
     import_error = "Could not parse the file: #{ex.message}"
@@ -282,6 +295,7 @@ end
 post "/import/confirm" do |env|
   session = Patty::Auth.session_for(env).not_nil!
   content = env.params.body["content"]?.to_s
+  requested_id = env.params.body["id"]?.to_s
   begin
     profile = Patty::Profiles::Parser.parse(content)
     validation = Patty::Profiles::Validator.validate(profile)
@@ -289,7 +303,7 @@ post "/import/confirm" do |env|
       session.flash!("error", "Import failed:\n" + validation.join("\n"))
       next env.redirect "/import"
     end
-    profile.id = import_id_for(profile)
+    profile.id = import_id_for(requested_id)
     saved = Patty::Profiles::Store.save(profile)
     Patty::Util::ActionLog.log("Imported profile #{saved.slug}.")
     session.flash!("success", "Imported #{saved.name} as #{saved.slug}.")
@@ -314,14 +328,6 @@ post "/profiles/:id/restart" do |env|
   run_action(env) { |id| Patty::Core::Actions.restart_profile(id) }
 end
 
-post "/profiles/:id/enable-route" do |env|
-  run_action(env) { |id| Patty::Core::Actions.enable_route(id) }
-end
-
-post "/profiles/:id/disable-route" do |env|
-  run_action(env) { |id| Patty::Core::Actions.disable_route(id) }
-end
-
 post "/caddy/validate" do |env|
   session = Patty::Auth.session_for(env).not_nil!
   session.flash(Patty::Core::Actions.validate_caddy)
@@ -341,20 +347,64 @@ get "/settings" do |env|
   csrf = session.csrf_token
   flash = session.take_flash
   config = Patty::Config.instance
+  errors = [] of String
+  autostart = Patty::Install::Autostart.installed?
   page(:settings)
+end
+
+get "/static/icon.png" do |env|
+  env.response.content_type = "image/png"
+  env.response.headers["Cache-Control"] = "public, max-age=86400"
+  ICON_PNG
 end
 
 post "/settings" do |env|
   session = Patty::Auth.session_for(env).not_nil!
-  config = Patty::Config.instance
+  previous_yaml = Patty::Config.instance.to_yaml
+  config = Patty::Config.from_yaml(previous_yaml)
   config.server.bind = env.params.body["bind"]?.to_s.strip.presence || "127.0.0.1"
   config.server.port = env.params.body["port"]?.to_s.to_i? || 7629
   config.caddy.binary = env.params.body["caddy_binary"]?.to_s.strip.presence || "caddy"
+  config.caddy.dashboard_address = env.params.body["dashboard_address"]?.to_s.strip.presence
   config.caddy.validate_before_reload = env.params.body["validate_before_reload"]? == "on"
   config.caddy.reload_after_apply = env.params.body["reload_after_apply"]? == "on"
-  config.save
-  Patty::Util::ActionLog.log("Settings saved.")
-  session.flash!("success", "Settings saved. Server changes apply after restarting Patty.")
+  errors = config.errors
+  if errors.empty?
+    config.caddy.dashboard_address = Patty::Caddy::DashboardAddress.normalize(config.caddy.dashboard_address)
+    config.save
+    Patty::Config.reload!
+    route = Patty::Caddy::Manager.configure_dashboard(config)
+    if route.ok?
+      Patty::Util::ActionLog.log("Settings saved. #{route.message}")
+      session.flash!("success", "Settings saved. #{route.message} Server changes apply after restarting Patty.")
+      env.redirect "/settings"
+    else
+      Patty::Config.from_yaml(previous_yaml).save
+      Patty::Config.reload!
+      errors << route.message
+      errors << route.detail.not_nil! if route.detail
+      flash = nil
+      csrf = session.csrf_token
+      autostart = Patty::Install::Autostart.installed?
+      page(:settings)
+    end
+  else
+    flash = nil
+    csrf = session.csrf_token
+    autostart = Patty::Install::Autostart.installed?
+    page(:settings)
+  end
+end
+
+post "/settings/autostart/install" do |env|
+  session = Patty::Auth.session_for(env).not_nil!
+  session.flash(Patty::Install::Autostart.install)
+  env.redirect "/settings"
+end
+
+post "/settings/autostart/uninstall" do |env|
+  session = Patty::Auth.session_for(env).not_nil!
+  session.flash(Patty::Install::Autostart.uninstall)
   env.redirect "/settings"
 end
 
@@ -364,7 +414,8 @@ get "/logs" do |env|
   session = Patty::Auth.session_for(env).not_nil!
   csrf = session.csrf_token
   flash = session.take_flash
-  lines = Patty::Util::ActionLog.tail
+  patty_lines = Patty::Util::ActionLog.tail
+  caddy_lines = Patty::Util::ActionLog.tail_file(Patty::Util::Paths.caddy_log_file)
   page(:logs)
 end
 
@@ -386,8 +437,12 @@ get "/api/status" do |env|
           snapshot.profiles.each do |p|
             json.object do
               json.field "id", p.id
-              json.field "service", p.service.label
+              json.field "service", p.service.try(&.label)
               json.field "route_enabled", p.route_enabled
+              json.field "health", p.health.state.label
+              json.field "health_label", p.health.label
+              json.field "health_detail", p.health.detail
+              json.field "warnings", p.warnings
             end
           end
         end
@@ -407,7 +462,7 @@ end
 
 private def form_values(env) : Hash(String, String)
   values = {} of String => String
-  {"name", "program", "caddy", "description", "category", "id"}.each do |key|
+  {"program", "caddy", "id"}.each do |key|
     values[key] = env.params.body[key]?.to_s.gsub("\r\n", "\n")
   end
   values
@@ -415,33 +470,20 @@ end
 
 private def profile_from_form(v : Hash(String, String), id : String?) : Patty::Profile
   Patty::Profile.new(
-    1,
-    v["name"].strip,
-    v["program"].strip,
-    v["caddy"],
+    caddy: v["caddy"],
+    program: v["program"].strip.presence,
     id: id,
-    description: v["description"]?.try(&.strip.presence),
-    category: v["category"]?.try(&.strip.presence),
   )
 end
 
 private def profile_status(profile : Patty::Profile) : Patty::Core::State::ProfileStatus
-  status, adapter = Patty::Services::Manager.status(profile.program)
-  Patty::Core::State::ProfileStatus.new(
-    id: profile.slug,
-    name: profile.name,
-    program: profile.program,
-    service: status,
-    adapter: adapter,
-    route_enabled: Patty::Caddy::Snippets.enabled?(profile.slug),
-    open_url: profile.open_url,
-    description: profile.description,
-  )
+  Patty::Core::State.profile_status(profile)
 end
 
-# Keeps a custom id when free, otherwise picks a collision-free variant.
-private def import_id_for(profile : Patty::Profile) : String
+# Derives a safe identity from the uploaded filename and avoids collisions.
+private def import_id_for(filename : String) : String
   existing = Patty::Profiles::Store.ids
-  base = profile.id || Patty::Profiles::IdGenerator.slugify(profile.name)
-  Patty::Profiles::IdGenerator.generate(base, existing)
+  basename = File.basename(filename)
+  stem = File.basename(basename, File.extname(basename))
+  Patty::Profiles::IdGenerator.generate(stem, existing)
 end

@@ -5,15 +5,21 @@ module Patty::Profiles
     @@mutation_mutex = Mutex.new
 
     def self.all : Array(Profile)
-      Dir.glob(File.join(Util::Paths.profiles_dir, "*.pattyfile")).sort.compact_map do |path|
-        begin
-          profile = Parser.parse(File.read(path))
-          profile.id ||= File.basename(path, ".pattyfile")
-          profile
-        rescue Profiles::ParseError
-          nil
+      return [] of Profile unless Dir.exists?(Util::Paths.profiles_dir)
+
+      Dir.children(Util::Paths.profiles_dir)
+        .select(&.ends_with?(".pattyfile"))
+        .sort
+        .compact_map do |filename|
+          path = File.join(Util::Paths.profiles_dir, filename)
+          begin
+            profile = Parser.parse(File.read(path))
+            profile.id ||= File.basename(path, ".pattyfile")
+            profile
+          rescue Profiles::ParseError
+            nil
+          end
         end
-      end
     end
 
     def self.ids : Array(String)
@@ -34,12 +40,14 @@ module Patty::Profiles
       File.exists?(path_for(id))
     end
 
-    # Assigns a collision-free id when missing, then writes canonical YAML.
+    # Writes canonical YAML under the identity assigned from a filename.
     def self.save(profile : Profile) : Profile
       @@mutation_mutex.synchronize do
         Dir.mkdir_p(Util::Paths.profiles_dir)
-        if profile.id.nil?
-          profile.id = IdGenerator.generate(profile.name, ids)
+        id = profile.id
+        raise ArgumentError.new("profile identity is required") unless id
+        unless Validator::ID_RE.matches?(id)
+          raise ArgumentError.new("profile identity must be a lowercase slug")
         end
         Util::AtomicFile.write(path_for(profile.slug), profile.to_pattyfile)
         profile
@@ -49,7 +57,16 @@ module Patty::Profiles
     def self.delete(id : String)
       @@mutation_mutex.synchronize do
         path = path_for(id)
-        File.delete(path) if File.exists?(path)
+        return unless File.exists?(path)
+
+        tombstone = "#{path}.delete-#{Random::Secure.hex(8)}"
+        File.rename(path, tombstone)
+        begin
+          File.delete(tombstone)
+        rescue ex
+          File.rename(tombstone, path) if File.exists?(tombstone) && !File.exists?(path)
+          raise ex
+        end
       end
     end
 

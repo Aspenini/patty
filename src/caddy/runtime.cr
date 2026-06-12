@@ -1,10 +1,11 @@
-require "http/client"
+require "socket"
 
 module Patty::Caddy
   abstract class Runtime
     abstract def found? : Bool
     abstract def running? : Bool
     abstract def validate(config_path : String) : Result
+    abstract def start(config_path : String) : Result
     abstract def reload(config_path : String) : Result
   end
 
@@ -17,16 +18,11 @@ module Patty::Caddy
     end
 
     def running? : Bool
-      client = HTTP::Client.new(ADMIN_HOST, ADMIN_PORT)
-      client.connect_timeout = 1.seconds
-      client.read_timeout = 2.seconds
-      begin
-        client.get("/config/").status_code < 500
-      rescue
-        false
-      ensure
-        client.close
-      end
+      socket = TCPSocket.new(ADMIN_HOST, ADMIN_PORT, connect_timeout: 1.second)
+      socket.close
+      true
+    rescue
+      false
     end
 
     def validate(config_path : String) : Result
@@ -43,14 +39,40 @@ module Patty::Caddy
       end
     end
 
-    def reload(config_path : String) : Result
+    def start(config_path : String) : Result
       unless found?
         return Result.failure("Caddy binary \"#{binary}\" not found.",
           "Install Caddy or set the binary path on the Settings page.")
       end
-      unless running?
-        return Result.failure("Caddy is not running, so it was not reloaded.",
-          "Start it with: #{binary} run --config \"#{config_path}\" --adapter caddyfile")
+
+      Util::ActionLog.rotate_caddy_before_start!
+      args = [
+        Util::Platform.windows? ? "run" : "start",
+        "--config", config_path,
+        "--adapter", "caddyfile",
+      ]
+      res =
+        if Util::Platform.windows?
+          Util::ProcessRunner.start_logged(binary, args, Util::Paths.caddy_log_file)
+        else
+          Util::ProcessRunner.run_logged(binary, args, Util::Paths.caddy_log_file)
+        end
+      unless res.success?
+        return Result.failure("Caddy could not be started.", startup_detail(res))
+      end
+
+      30.times do
+        return Result.success("Caddy started.") if running?
+        sleep 100.milliseconds
+      end
+
+      Result.failure("Caddy was launched, but its admin API did not become ready.", startup_detail(res))
+    end
+
+    def reload(config_path : String) : Result
+      unless found?
+        return Result.failure("Caddy binary \"#{binary}\" not found.",
+          "Install Caddy or set the binary path on the Settings page.")
       end
 
       res = Util::ProcessRunner.run(binary, ["reload", "--config", config_path, "--adapter", "caddyfile"])
@@ -63,6 +85,10 @@ module Patty::Caddy
 
     private def binary : String
       Config.instance.caddy.binary
+    end
+
+    private def startup_detail(result : Util::CommandResult) : String
+      result.output.presence || "See #{Util::Paths.caddy_log_file}"
     end
   end
 

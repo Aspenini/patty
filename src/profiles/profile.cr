@@ -2,42 +2,34 @@ require "yaml"
 require "uri"
 
 module Patty
-  # A parsed .pattyfile. Simple format only in v0.0:
-  # required patty/name/program/caddy, optional id/description/category.
+  # Pattyfile identity comes from its filename and is never serialized.
   class Profile
     include YAML::Serializable
+    include YAML::Serializable::Strict
 
-    property patty : Int32
-    property name : String
-    property program : String
+    property program : String?
     property caddy : String
-    property id : String?
-    property description : String?
-    property category : String?
 
-    def initialize(@patty : Int32, @name : String, @program : String, @caddy : String,
-                   @id : String? = nil, @description : String? = nil, @category : String? = nil)
+    @[YAML::Field(ignore: true)]
+    property id : String?
+
+    def initialize(@caddy : String, @program : String? = nil, @id : String? = nil)
     end
 
     def slug : String
-      id || Profiles::IdGenerator.slugify(name)
+      id || raise "Profile identity has not been assigned from a filename"
+    end
+
+    def name : String
+      slug
     end
 
     # Canonical .pattyfile output used for storage and export.
     def to_pattyfile : String
       String.build do |io|
-        io << "patty: " << patty << "\n\n"
-        io << "name: " << yaml_scalar(name) << '\n'
-        if value = id
-          io << "id: " << yaml_scalar(value) << '\n'
+        if value = program
+          io << "program: " << yaml_scalar(value) << "\n\n"
         end
-        if value = description
-          io << "description: " << yaml_scalar(value) << '\n'
-        end
-        if value = category
-          io << "category: " << yaml_scalar(value) << '\n'
-        end
-        io << "program: " << yaml_scalar(program) << "\n\n"
         io << "caddy: |\n"
         caddy.each_line(chomp: true) do |line|
           if line.empty?

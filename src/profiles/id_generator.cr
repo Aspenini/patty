@@ -1,11 +1,11 @@
 module Patty::Profiles::IdGenerator
-  def self.slugify(name : String) : String
-    slug = name.downcase.gsub(/[^a-z0-9]+/, "-").strip('-')
-    slug.empty? ? "app" : slug
+  def self.slugify(filename_stem : String) : String
+    slug = filename_stem.downcase.gsub(/[^a-z0-9]+/, "-").strip('-')
+    slug.empty? ? "profile" : slug
   end
 
-  def self.generate(name : String, existing : Array(String) = [] of String) : String
-    base = slugify(name)
+  def self.generate(filename_stem : String, existing : Array(String) = [] of String) : String
+    base = slugify(filename_stem)
     return base unless existing.includes?(base)
     n = 2
     while existing.includes?("#{base}-#{n}")

@@ -10,15 +10,17 @@ module Patty::Caddy
 
     def bootstrap!
       Util::Paths.ensure_all!
-      return if File.exists?(main_caddyfile)
-      Util::AtomicFile.write(main_caddyfile, caddyfile_content(enabled_dir))
+      content = caddyfile_content(enabled_dir)
+      return if File.exists?(main_caddyfile) && File.read(main_caddyfile) == content
+      Util::AtomicFile.write(main_caddyfile, content)
     end
 
     def caddyfile_content(dir : String) : String
+      import_dir = dir.gsub('\\', '/')
       <<-CADDY
       # Managed by Patty — pick your Caddy.
       # This file imports every enabled route snippet.
-      import "#{dir}/*.caddy"
+      import "#{import_dir}/*.caddy"
 
       CADDY
     end

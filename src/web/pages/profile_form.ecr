@@ -10,36 +10,25 @@
   <form method="post" action="<%= form_action %>">
     <input type="hidden" name="csrf_token" value="<%= csrf %>">
 
-    <label for="name">Name</label>
-    <input type="text" id="name" name="name" required value="<%= h(v["name"]?) %>" placeholder="Jellyfin">
+    <label for="id">Filename</label>
+    <% if editing %>
+      <input type="text" value="<%= h(v["id"]?) %>.pattyfile" disabled>
+      <input type="hidden" name="id" value="<%= h(v["id"]?) %>">
+      <p class="hint">Filenames are fixed once created.</p>
+    <% else %>
+      <input type="text" id="id" name="id" required value="<%= h(v["id"]?) %>" placeholder="jellyfin">
+      <p class="hint">A lowercase filename stem using letters, numbers, and dashes.</p>
+    <% end %>
 
-    <label for="program">Program/service</label>
-    <input type="text" id="program" name="program" required value="<%= h(v["program"]?) %>" placeholder="jellyfin">
-    <p class="hint">A plain service or executable name — never a shell command.</p>
+    <label for="program">Program/service <span class="hint">(optional)</span></label>
+    <input type="text" id="program" name="program" value="<%= h(v["program"]?) %>" placeholder="jellyfin">
+    <p class="hint">Leave blank for Caddy-only profiles. Programs must be plain service names, never shell commands.</p>
 
     <label for="caddy">Caddy snippet</label>
     <textarea id="caddy" name="caddy" required placeholder="jellyfin.example.com {
     reverse_proxy 127.0.0.1:8096
 }"><%= h(v["caddy"]?) %></textarea>
-
-    <details <%= v["description"]?.presence || v["category"]?.presence || v["id"]?.presence ? "open" : "" %>>
-      <summary>More options</summary>
-
-      <label for="description">Description</label>
-      <input type="text" id="description" name="description" value="<%= h(v["description"]?) %>">
-
-      <label for="category">Category</label>
-      <input type="text" id="category" name="category" value="<%= h(v["category"]?) %>">
-
-      <% if editing %>
-        <label>Profile id</label>
-        <input type="text" value="<%= h(v["id"]?) %>" disabled>
-        <p class="hint">Ids are fixed once created.</p>
-      <% else %>
-        <label for="id">Custom id</label>
-        <input type="text" id="id" name="id" value="<%= h(v["id"]?) %>" placeholder="auto-generated from name">
-      <% end %>
-    </details>
+    <p class="hint">A public hostname can expose this route to the internet. Add appropriate authentication before publishing sensitive apps or files.</p>
 
     <p style="margin-top: 1rem;">
       <button class="btn primary" type="submit"><%= editing ? "Save Changes" : "Save Profile" %></button>

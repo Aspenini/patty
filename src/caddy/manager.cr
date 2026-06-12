@@ -54,6 +54,33 @@ module Patty::Caddy
       end
     end
 
+    def self.configure_dashboard(config : Config) : Result
+      @@mutex.synchronize do
+        backend.bootstrap!
+        id = DashboardRoute::ID
+        candidate = DashboardRoute.dashboard_snippet(config)
+        previous = snippet_content(id)
+        return Result.success("Dashboard route is unchanged.") if candidate == previous
+
+        if config.caddy.validate_before_reload
+          validation = validate_candidate(id, candidate)
+          unless validation.ok?
+            return Result.failure("Failed to update the dashboard route: #{validation.message}", validation.detail)
+          end
+        end
+
+        backup!
+        if candidate
+          Snippets.write(id, candidate)
+          message = "Dashboard route enabled at #{config.caddy.dashboard_address}."
+        else
+          Snippets.remove(id)
+          message = "Dashboard route disabled."
+        end
+        finish_apply(id, previous, message, config.caddy.reload_after_apply)
+      end
+    end
+
     def self.validate_active : Result
       @@mutex.synchronize do
         backend.bootstrap!
@@ -92,8 +119,9 @@ module Patty::Caddy
       end
     end
 
-    private def self.finish_apply(id : String, previous : String?, message : String) : Result
-      unless Config.instance.caddy.reload_after_apply
+    private def self.finish_apply(id : String, previous : String?, message : String,
+                                  reload_after_apply = Config.instance.caddy.reload_after_apply) : Result
+      unless reload_after_apply
         return Result.success("#{message} Reload skipped (disabled in settings).")
       end
 

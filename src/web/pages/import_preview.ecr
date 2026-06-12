@@ -1,23 +1,18 @@
 <h1>Import Profile: <%= h(preview.name) %></h1>
 
 <div class="panel">
-  <p class="kv"><span class="k">Name</span> <%= h(preview.name) %></p>
-  <p class="kv"><span class="k">Program/service</span> <code><%= h(preview.program) %></code></p>
-  <p class="kv"><span class="k">Will be saved as</span> <code><%= final_id %></code></p>
-  <% if d = preview.description %><p class="kv"><span class="k">Description</span> <%= h(d) %></p><% end %>
+  <p class="kv"><span class="k">Will be saved as</span> <code><%= final_id %>.pattyfile</code></p>
+  <p class="kv"><span class="k">Program/service</span>
+    <% if program = preview.program %><code><%= h(program) %></code><% else %>Caddy only<% end %>
+  </p>
 
   <h2>Caddy snippet</h2>
   <pre class="snippet"><%= h(preview.caddy) %></pre>
 
-  <p>Patty will try to control:</p>
-  <ul>
-    <li>Service or executable: <code><%= h(preview.program) %></code></li>
-    <li>Caddy route snippet: <code><%= final_id %>.caddy</code></li>
-  </ul>
-
   <form method="post" action="/import/confirm">
     <input type="hidden" name="csrf_token" value="<%= csrf %>">
     <input type="hidden" name="content" value="<%= h(content) %>">
+    <input type="hidden" name="id" value="<%= h(final_id) %>">
     <button class="btn primary" type="submit">Import</button>
     <a class="btn" href="/import">Cancel</a>
   </form>

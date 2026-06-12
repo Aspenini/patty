@@ -1,8 +1,43 @@
 require "./spec_helper"
 
 private def jellyfin_profile : Patty::Profile
-  Patty::Profile.new(1, "Jellyfin", "jellyfin",
-    "jellyfin.localhost {\n    reverse_proxy 127.0.0.1:8096\n}\n")
+  Patty::Profile.new(
+    caddy: "jellyfin.localhost {\n    reverse_proxy 127.0.0.1:8096\n}\n",
+    program: "jellyfin",
+    id: "jellyfin")
+end
+
+describe Patty::Caddy::DashboardAddress do
+  it "accepts hostnames and http(s) URLs without paths" do
+    Patty::Caddy::DashboardAddress.normalize("patty.example.com").should eq "patty.example.com"
+    Patty::Caddy::DashboardAddress.normalize("https://patty.example.com/").should eq "https://patty.example.com"
+    Patty::Caddy::DashboardAddress.browser_url("patty.example.com").should eq "https://patty.example.com"
+  end
+
+  it "rejects paths and Caddy syntax" do
+    expect_raises(ArgumentError) do
+      Patty::Caddy::DashboardAddress.normalize("https://patty.example.com/admin")
+    end
+    expect_raises(ArgumentError) do
+      Patty::Caddy::DashboardAddress.normalize("patty.example.com {\nrespond ok\n}")
+    end
+  end
+end
+
+describe Patty::Caddy::DashboardRoute do
+  it "renders a reverse proxy to Patty and avoids profile ID collisions" do
+    fresh_home!
+    config = Patty::Config.instance
+    config.caddy.dashboard_address = "patty.example.com"
+    config.server.bind = "0.0.0.0"
+    config.server.port = 7629
+
+    content = Patty::Caddy::DashboardRoute.dashboard_snippet(config).not_nil!
+
+    Patty::Caddy::DashboardRoute::ID.should eq "__patty-dashboard"
+    content.should contain "patty.example.com {"
+    content.should contain "reverse_proxy 127.0.0.1:7629"
+  end
 end
 
 describe Patty::Caddy::PortableBackend do
@@ -11,7 +46,17 @@ describe Patty::Caddy::PortableBackend do
     backend = Patty::Caddy::PortableBackend.new
     backend.bootstrap!
     content = File.read(backend.main_caddyfile)
-    content.should contain %(import "#{backend.enabled_dir}/*.caddy")
+    content.should contain %(import "#{backend.enabled_dir.gsub('\\', '/')}/*.caddy")
+  end
+
+  it "repairs a stale managed Caddyfile after the data directory moves" do
+    fresh_home!
+    backend = Patty::Caddy::PortableBackend.new
+    File.write(backend.main_caddyfile, %(import "C:/old/patty/enabled/*.caddy"\n))
+
+    backend.bootstrap!
+
+    File.read(backend.main_caddyfile).should eq backend.caddyfile_content(backend.enabled_dir)
   end
 end
 
@@ -22,6 +67,7 @@ describe Patty::Caddy::Snippets do
     Patty::Caddy::Snippets.write("jellyfin", Patty::Caddy::Snippets.render(profile))
     Patty::Caddy::Snippets.enabled?("jellyfin").should be_true
     File.read(Patty::Caddy::Snippets.path_for("jellyfin")).should contain "reverse_proxy"
+    Patty::Caddy::Snippets.files.should eq [Patty::Caddy::Snippets.path_for("jellyfin")]
 
     Patty::Caddy::Snippets.remove("jellyfin")
     Patty::Caddy::Snippets.enabled?("jellyfin").should be_false
@@ -29,6 +75,50 @@ describe Patty::Caddy::Snippets do
 end
 
 describe Patty::Caddy::Manager do
+  it "enables and removes the managed dashboard route" do
+    fresh_home!
+    Patty::Caddy.runtime = FakeCaddyRuntime.new
+    config = Patty::Config.instance
+    config.caddy.dashboard_address = "patty.example.com"
+
+    enabled = Patty::Caddy::Manager.configure_dashboard(config)
+
+    enabled.ok?.should be_true
+    path = Patty::Caddy::Snippets.path_for(Patty::Caddy::DashboardRoute::ID)
+    File.read(path).should contain "reverse_proxy 127.0.0.1:7629"
+
+    config.caddy.dashboard_address = nil
+    disabled = Patty::Caddy::Manager.configure_dashboard(config)
+
+    disabled.ok?.should be_true
+    File.exists?(path).should be_false
+  end
+
+  it "starts Caddy when applying while the admin API is not running" do
+    fresh_home!
+    runtime = FakeCaddyRuntime.new
+    runtime.running = false
+    Patty::Caddy.runtime = runtime
+
+    result = Patty::Caddy::Manager.enable_route(jellyfin_profile)
+
+    result.ok?.should be_true
+    result.message.should contain "Caddy started."
+    runtime.start_calls.should eq [Patty::Caddy::Manager.backend.main_caddyfile]
+    runtime.reload_calls.should be_empty
+  end
+
+  it "reloads Caddy when it is already running" do
+    fresh_home!
+    runtime = FakeCaddyRuntime.new
+    Patty::Caddy.runtime = runtime
+
+    Patty::Caddy::Manager.reload_active.ok?.should be_true
+
+    runtime.start_calls.should be_empty
+    runtime.reload_calls.should eq [Patty::Caddy::Manager.backend.main_caddyfile]
+  end
+
   it "enables a valid route and backs up prior state" do
     fresh_home!
     Patty::Caddy.runtime = FakeCaddyRuntime.new
@@ -44,8 +134,10 @@ describe Patty::Caddy::Manager do
     runtime = FakeCaddyRuntime.new
     runtime.validate_results << Patty::Result.failure("Caddy validation failed.", "bad directive")
     Patty::Caddy.runtime = runtime
-    bad = Patty::Profile.new(1, "Broken", "broken",
-      "broken.localhost {\n    reverse_proxie 127.0.0.1:1\n}\n")
+    bad = Patty::Profile.new(
+      caddy: "broken.localhost {\n    reverse_proxie 127.0.0.1:1\n}\n",
+      program: "broken",
+      id: "broken")
     result = Patty::Caddy::Manager.enable_route(bad)
     result.ok?.should be_false
     Patty::Caddy::Snippets.enabled?("broken").should be_false

@@ -1,27 +1,46 @@
 <h1><%= h(profile.name) %></h1>
 
 <div class="panel">
-  <p class="kv"><span class="k">Program/service</span> <code><%= h(profile.program) %></code></p>
-  <p class="kv"><span class="k">Adapter</span> <%= status.adapter ? h(status.adapter) : "none detected" %></p>
-  <p class="kv"><span class="k">Service status</span>
-    <span class="badge <%= status.service.running? ? "ok" : "off" %>" data-service="<%= status.id %>"><%= status.service.label %></span>
-  </p>
+  <% if program = profile.program %>
+    <p class="kv"><span class="k">Program/service</span> <code><%= h(program) %></code></p>
+    <p class="kv"><span class="k">Adapter</span> <%= status.adapter ? h(status.adapter) : "none detected" %></p>
+    <% if service = status.service %>
+      <p class="kv"><span class="k">Service status</span>
+        <span class="badge <%= service.running? ? "ok" : "off" %>" data-service="<%= status.id %>"><%= service.label %></span>
+      </p>
+    <% end %>
+  <% else %>
+    <p class="kv"><span class="k">Program/service</span> Caddy only</p>
+  <% end %>
   <p class="kv"><span class="k">Caddy route</span>
     <span class="badge <%= status.route_enabled ? "ok" : "off" %>" data-route="<%= status.id %>">route <%= status.route_enabled ? "enabled" : "disabled" %></span>
   </p>
-  <% if d = profile.description %><p class="kv"><span class="k">Description</span> <%= h(d) %></p><% end %>
-  <% if c = profile.category %><p class="kv"><span class="k">Category</span> <%= h(c) %></p><% end %>
-  <p class="kv"><span class="k">Profile id</span> <code><%= profile.slug %></code></p>
+  <p class="kv"><span class="k">Health</span>
+    <span class="badge <%= status.health.state.css_class %>" data-health="<%= status.id %>"><%= h(status.health.label) %></span>
+    <span class="hint"><%= h(status.health.detail) %></span>
+  </p>
+  <p class="kv"><span class="k">Pattyfile</span> <code><%= profile.slug %>.pattyfile</code></p>
 </div>
+
+<% unless status.warnings.empty? %>
+  <div class="warning-panel">
+    <% status.warnings.each do |warning| %><p><strong>Security warning:</strong> <%= h(warning) %></p><% end %>
+  </div>
+<% end %>
 
 <div class="actions" style="margin-bottom: 1.2rem;">
   <% if url = status.open_url %>
     <a class="btn" href="<%= h(url) %>" target="_blank" rel="noopener">Open</a>
   <% end %>
-  <% {"start", "stop", "restart", "enable-route", "disable-route"}.each do |action| %>
-    <form class="inline" method="post" action="/profiles/<%= profile.slug %>/<%= action %>">
+  <% action = status.route_enabled ? "stop" : "start" %>
+  <form class="inline" method="post" action="/profiles/<%= profile.slug %>/<%= action %>">
+    <input type="hidden" name="csrf_token" value="<%= csrf %>">
+    <button class="btn <%= status.route_enabled ? "" : "primary" %>" type="submit"><%= action.capitalize %></button>
+  </form>
+  <% if profile.program %>
+    <form class="inline" method="post" action="/profiles/<%= profile.slug %>/restart">
       <input type="hidden" name="csrf_token" value="<%= csrf %>">
-      <button class="btn" type="submit"><%= action.split('-').map(&.capitalize).join(' ') %></button>
+      <button class="btn" type="submit">Restart</button>
     </form>
   <% end %>
   <form class="inline" method="post" action="/caddy/validate">
@@ -30,7 +49,7 @@
   </form>
   <form class="inline" method="post" action="/caddy/reload">
     <input type="hidden" name="csrf_token" value="<%= csrf %>">
-    <button class="btn" type="submit">Reload Caddy</button>
+    <button class="btn" type="submit">Start / Reload Caddy</button>
   </form>
   <a class="btn" href="/profiles/<%= profile.slug %>/edit">Edit</a>
   <a class="btn" href="/profiles/<%= profile.slug %>/export">Export</a>

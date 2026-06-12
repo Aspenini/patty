@@ -8,21 +8,28 @@ module Patty::Core
       @@mutation_mutex.synchronize do
         profile = Profiles::Store.find(id)
         return not_found(id) unless profile
-        initial_status, _ = Services::Manager.status(profile.program)
 
-        service = Services::Manager.start(profile.program)
+        unless program = profile.program
+          route = Caddy::Manager.enable_route(profile)
+          Util::ActionLog.log(route.message)
+          return route.ok? ? Result.success("Started #{profile.name}.") : route
+        end
+
+        initial_status, _ = Services::Manager.status(program)
+
+        service = Services::Manager.start(program)
         unless service.ok?
-          Util::ActionLog.log("Failed to start #{profile.program}: #{service.message}")
+          Util::ActionLog.log("Failed to start #{program}: #{service.message}")
           return service
         end
-        Util::ActionLog.log("Started #{profile.program}.")
+        Util::ActionLog.log("Started #{program}.")
 
         route = Caddy::Manager.enable_route(profile)
         Util::ActionLog.log(route.message)
         if route.ok?
           Result.success("Started #{profile.name} and enabled its route.")
         else
-          compensate_start(profile, initial_status, route)
+          compensate_start(profile, program, initial_status, route)
         end
       end
     end
@@ -31,21 +38,28 @@ module Patty::Core
       @@mutation_mutex.synchronize do
         profile = Profiles::Store.find(id)
         return not_found(id) unless profile
-        initial_status, _ = Services::Manager.status(profile.program)
 
-        service = Services::Manager.stop(profile.program)
+        unless program = profile.program
+          route = Caddy::Manager.disable_route(profile.slug)
+          Util::ActionLog.log(route.message)
+          return route.ok? ? Result.success("Stopped #{profile.name}.") : route
+        end
+
+        initial_status, _ = Services::Manager.status(program)
+
+        service = Services::Manager.stop(program)
         unless service.ok?
-          Util::ActionLog.log("Failed to stop #{profile.program}: #{service.message}")
+          Util::ActionLog.log("Failed to stop #{program}: #{service.message}")
           return service
         end
-        Util::ActionLog.log("Stopped #{profile.program}.")
+        Util::ActionLog.log("Stopped #{program}.")
 
         route = Caddy::Manager.disable_route(profile.slug)
         Util::ActionLog.log(route.message)
         if route.ok?
           Result.success("Stopped #{profile.name} and disabled its route.")
         else
-          compensate_stop(profile, initial_status, route)
+          compensate_stop(profile, program, initial_status, route)
         end
       end
     end
@@ -54,30 +68,12 @@ module Patty::Core
       @@mutation_mutex.synchronize do
         profile = Profiles::Store.find(id)
         return not_found(id) unless profile
+        program = profile.program
+        return Result.failure("#{profile.name} has no program to restart.") unless program
 
-        service = Services::Manager.restart(profile.program)
-        Util::ActionLog.log(service.ok? ? "Restarted #{profile.program}." : "Failed to restart #{profile.program}: #{service.message}")
+        service = Services::Manager.restart(program)
+        Util::ActionLog.log(service.ok? ? "Restarted #{program}." : "Failed to restart #{program}: #{service.message}")
         service.ok? ? Result.success("Restarted #{profile.name}.") : service
-      end
-    end
-
-    def self.enable_route(id : String) : Result
-      @@mutation_mutex.synchronize do
-        profile = Profiles::Store.find(id)
-        return not_found(id) unless profile
-        result = Caddy::Manager.enable_route(profile)
-        Util::ActionLog.log(result.message)
-        result
-      end
-    end
-
-    def self.disable_route(id : String) : Result
-      @@mutation_mutex.synchronize do
-        profile = Profiles::Store.find(id)
-        return not_found(id) unless profile
-        result = Caddy::Manager.disable_route(profile.slug)
-        Util::ActionLog.log(result.message)
-        result
       end
     end
 
@@ -160,7 +156,8 @@ module Patty::Core
       Result.failure("Profile \"#{id}\" not found.")
     end
 
-    private def self.compensate_start(profile : Profile, initial_status : Services::Status,
+    private def self.compensate_start(profile : Profile, program : String,
+                                      initial_status : Services::Status,
                                       route : Result) : Result
       unless initial_status.stopped?
         return Result.failure(
@@ -168,13 +165,14 @@ module Patty::Core
           join_details(route.message, route.detail, "Service compensation skipped because its prior state was #{initial_status.label}."))
       end
 
-      compensation = Services::Manager.stop(profile.program)
-      Util::ActionLog.log(compensation.ok? ? "Stopped #{profile.program} to compensate for route failure." : "Failed to compensate start of #{profile.program}: #{compensation.message}")
+      compensation = Services::Manager.stop(program)
+      Util::ActionLog.log(compensation.ok? ? "Stopped #{program} to compensate for route failure." : "Failed to compensate start of #{program}: #{compensation.message}")
       message = compensation.ok? ? "#{profile.name} could not be started; the service was restored to stopped." : "#{profile.name} started, its route failed, and restoring the service also failed."
       Result.failure(message, join_details(route.message, route.detail, compensation_detail(compensation)))
     end
 
-    private def self.compensate_stop(profile : Profile, initial_status : Services::Status,
+    private def self.compensate_stop(profile : Profile, program : String,
+                                     initial_status : Services::Status,
                                      route : Result) : Result
       unless initial_status.running?
         return Result.failure(
@@ -182,8 +180,8 @@ module Patty::Core
           join_details(route.message, route.detail, "Service compensation skipped because its prior state was #{initial_status.label}."))
       end
 
-      compensation = Services::Manager.start(profile.program)
-      Util::ActionLog.log(compensation.ok? ? "Started #{profile.program} to compensate for route failure." : "Failed to compensate stop of #{profile.program}: #{compensation.message}")
+      compensation = Services::Manager.start(program)
+      Util::ActionLog.log(compensation.ok? ? "Started #{program} to compensate for route failure." : "Failed to compensate stop of #{program}: #{compensation.message}")
       message = compensation.ok? ? "#{profile.name} could not be stopped; the service was restored to running." : "#{profile.name} stopped, its route failed, and restoring the service also failed."
       Result.failure(message, join_details(route.message, route.detail, compensation_detail(compensation)))
     end
