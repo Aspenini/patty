@@ -1,7 +1,9 @@
 module Patty::Install::Autostart
-  WINDOWS_TASK = "Patty"
-  MAC_LABEL    = "org.patty.app"
-  LINUX_UNIT   = "patty.service"
+  WINDOWS_RUN_KEY   = %q(HKCU\Software\Microsoft\Windows\CurrentVersion\Run)
+  WINDOWS_RUN_VALUE = "Patty"
+  WINDOWS_TASK      = "Patty"
+  MAC_LABEL         = "org.patty.app"
+  LINUX_UNIT        = "patty.service"
 
   def self.install : Result
     executable = Process.executable_path
@@ -25,11 +27,7 @@ module Patty::Install::Autostart
   def self.uninstall : Result
     result =
       if Util::Platform.windows?
-        run_result(
-          Util::ProcessRunner.run("schtasks.exe", ["/Delete", "/TN", WINDOWS_TASK, "/F"]),
-          "Patty automatic startup removed.",
-          "Could not remove Patty automatic startup."
-        )
+        uninstall_windows
       elsif Util::Platform.macos?
         uninstall_macos
       elsif Util::Platform.linux?
@@ -44,7 +42,7 @@ module Patty::Install::Autostart
 
   def self.installed? : Bool
     if Util::Platform.windows?
-      Util::ProcessRunner.run("schtasks.exe", ["/Query", "/TN", WINDOWS_TASK]).success?
+      windows_registry_installed? || windows_task_installed?
     elsif Util::Platform.macos?
       File.exists?(mac_plist_path)
     elsif Util::Platform.linux?
@@ -54,11 +52,11 @@ module Patty::Install::Autostart
     end
   end
 
-  def self.windows_task_args(executable : String) : Array(String)
+  def self.windows_registry_args(executable : String) : Array(String)
     launcher, arguments = windows_launcher(executable)
     command = %("#{launcher}")
     command += " #{arguments}" unless arguments.empty?
-    ["/Create", "/TN", WINDOWS_TASK, "/SC", "ONLOGON", "/TR", command, "/F"]
+    ["ADD", WINDOWS_RUN_KEY, "/v", WINDOWS_RUN_VALUE, "/t", "REG_SZ", "/d", command, "/f"]
   end
 
   def self.macos_plist(executable : String) : String
@@ -108,15 +106,53 @@ module Patty::Install::Autostart
   end
 
   private def self.install_windows(executable : String) : Result
-    run_result(
-      Util::ProcessRunner.run("schtasks.exe", windows_task_args(executable)),
+    result = run_result(
+      Util::ProcessRunner.run("reg.exe", windows_registry_args(executable)),
       "Patty will start automatically when you sign in.",
       "Could not install Patty automatic startup."
     )
+    remove_windows_task if result.ok?
+    result
+  end
+
+  private def self.uninstall_windows : Result
+    details = [] of String
+
+    if windows_registry_installed?
+      command = Util::ProcessRunner.run(
+        "reg.exe",
+        ["DELETE", WINDOWS_RUN_KEY, "/v", WINDOWS_RUN_VALUE, "/f"])
+      details << command.output unless command.success?
+    end
+
+    if windows_task_installed?
+      command = remove_windows_task
+      details << command.output unless command.success?
+    end
+
+    if details.empty?
+      Result.success("Patty automatic startup removed.")
+    else
+      Result.failure("Could not remove Patty automatic startup.", details.reject(&.empty?).join('\n'))
+    end
+  end
+
+  private def self.windows_registry_installed? : Bool
+    Util::ProcessRunner.run(
+      "reg.exe",
+      ["QUERY", WINDOWS_RUN_KEY, "/v", WINDOWS_RUN_VALUE]).success?
+  end
+
+  private def self.windows_task_installed? : Bool
+    Util::ProcessRunner.run("schtasks.exe", ["/Query", "/TN", WINDOWS_TASK]).success?
+  end
+
+  private def self.remove_windows_task : Util::CommandResult
+    Util::ProcessRunner.run("schtasks.exe", ["/Delete", "/TN", WINDOWS_TASK, "/F"])
   end
 
   private def self.windows_launcher(executable : String) : {String, String}
-    if File.basename(executable).downcase == "pattyw.exe"
+    if executable.gsub('\\', '/').split('/').last.downcase == "pattyw.exe"
       {executable, ""}
     else
       background = File.join(File.dirname(executable), "pattyw.exe")

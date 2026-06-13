@@ -11,6 +11,7 @@ module Patty
       when "install"        then print_result(Install::Autostart.install)
       when "uninstall"      then print_result(Install::Autostart.uninstall)
       when "reset-password" then reset_password
+      when "reset-mfa"      then reset_mfa
       when "version"        then version
       when nil, "help", "--help", "-h"
         help
@@ -32,6 +33,7 @@ module Patty
         patty install         Start Patty automatically after sign-in
         patty uninstall       Remove automatic startup
         patty reset-password  Clear the admin password (re-runs first-run setup)
+        patty reset-mfa       Disable MFA using local machine access
         patty version         Show version info
       HELP
     end
@@ -50,11 +52,28 @@ module Patty
 
     def self.reset_password
       if Auth.password_set?
+        route = Caddy::Manager.disable_dashboard
+        unless route.ok?
+          STDERR.puts "Password was not reset because the public dashboard route could not be disabled."
+          STDERR.puts route.message
+          STDERR.puts route.detail if route.detail
+          exit 1
+        end
         Auth.reset_password!
         Util::ActionLog.log("Admin password reset from the CLI.")
-        puts "Admin password cleared. Open the web UI to set a new one."
+        puts "Admin password and MFA cleared. Public dashboard forwarding is disabled until setup is complete."
       else
         puts "No admin password is set."
+      end
+    end
+
+    def self.reset_mfa
+      if Auth.mfa_enabled?
+        Auth.reset_mfa!
+        Util::ActionLog.log("Security: MFA reset from the local CLI.")
+        puts "MFA disabled and all dashboard sessions revoked."
+      else
+        puts "MFA is not enabled."
       end
     end
 

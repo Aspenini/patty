@@ -7,14 +7,18 @@ require "../src/web/routes"
 
 private def patty_request(method : String, path : String, body : String? = nil,
                           cookie : String? = nil,
-                          content_type = "application/x-www-form-urlencoded") : HTTP::Client::Response
+                          content_type = "application/x-www-form-urlencoded",
+                          request_headers : HTTP::Headers? = nil,
+                          remote_ip : String? = nil) : HTTP::Client::Response
   headers = HTTP::Headers.new
   if body
     headers["Content-Type"] = content_type
     headers["Content-Length"] = body.bytesize.to_s
   end
   headers["Cookie"] = cookie if cookie
+  request_headers.try &.each { |key, value| headers[key] = value }
   request = HTTP::Request.new(method, path, headers, body)
+  request.remote_address = Socket::IPAddress.new(remote_ip, 0) if remote_ip
 
   Kemal.config.env = "test"
   Kemal.config.logging = false
@@ -46,6 +50,13 @@ private def web_context_with_cookie(cookie : String) : HTTP::Server::Context
   HTTP::Server::Context.new(request, HTTP::Server::Response.new(IO::Memory.new))
 end
 
+private def auth_form(path : String = "/login") : {String, String}
+  response = patty_request("GET", path)
+  token = response.body.match(/name="csrf_token" value="([^"]+)"/).not_nil![1]
+  cookie = response.headers["Set-Cookie"].split(';').first
+  {token, cookie}
+end
+
 describe "Patty web authentication" do
   it "redirects first-run requests to setup without a closed response error" do
     fresh_home!
@@ -66,11 +77,26 @@ describe "Patty web authentication" do
     response.headers["Location"].should eq "/login"
   end
 
-  it "logs in with valid credentials and sets a session cookie" do
+  it "requires a pre-session CSRF token for login" do
     fresh_home!
     Patty::Auth.set_password("configured-password")
 
     response = patty_request("POST", "/login", "password=configured-password")
+
+    response.status_code.should eq 403
+    response.body.should contain "CSRF"
+  end
+
+  it "logs in with valid credentials and sets a session cookie" do
+    fresh_home!
+    Patty::Auth.set_password("configured-password")
+    csrf, form_cookie = auth_form
+
+    body = URI::Params.encode({
+      "csrf_token" => csrf,
+      "password"   => "configured-password",
+    })
+    response = patty_request("POST", "/login", body, form_cookie)
 
     response.status_code.should eq 302
     response.headers["Location"].should eq "/"
@@ -100,6 +126,103 @@ describe "Patty web authentication" do
     response.status_code.should eq 302
     response.headers["Location"].should eq "/login"
     Patty::Auth.session_for(web_context_with_cookie(cookie)).should be_nil
+  end
+
+  it "sets defensive headers and rejects cross-origin posts" do
+    fresh_home!
+    Patty::Auth.set_password("configured-password")
+    session = web_session
+    cookie = "#{Patty::Auth::SESSION_COOKIE}=#{session.token}"
+
+    get_response = patty_request("GET", "/", cookie: cookie)
+    get_response.headers["Content-Security-Policy"].should contain "frame-ancestors 'none'"
+    get_response.headers["X-Content-Type-Options"].should eq "nosniff"
+    get_response.headers["Cache-Control"].should eq "no-store"
+    get_response.headers["Referrer-Policy"].should eq "same-origin"
+
+    headers = HTTP::Headers{
+      "Host"   => "patty.example.com",
+      "Origin" => "https://evil.example",
+    }
+    body = URI::Params.encode({"csrf_token" => session.csrf_token})
+    post_response = patty_request(
+      "POST", "/logout", body, cookie, request_headers: headers)
+    post_response.status_code.should eq 403
+    post_response.body.should contain "origin"
+
+    local_session = web_session
+    local_cookie = "#{Patty::Auth::SESSION_COOKIE}=#{local_session.token}"
+    local_headers = HTTP::Headers{
+      "Host"   => "127.0.0.1:7629",
+      "Origin" => "null",
+    }
+    local_body = URI::Params.encode({"csrf_token" => local_session.csrf_token})
+    local_response = patty_request(
+      "POST", "/logout", local_body, local_cookie,
+      request_headers: local_headers, remote_ip: "127.0.0.1")
+    local_response.status_code.should eq 302
+
+    proxy_session = web_session
+    proxy_cookie = "#{Patty::Auth::SESSION_COOKIE}=#{proxy_session.token}"
+    proxy_headers = HTTP::Headers{
+      "Host"              => "127.0.0.1:7629",
+      "Origin"            => "null",
+      "X-Forwarded-Host"  => "patty.example.com",
+      "X-Forwarded-Proto" => "https",
+      "X-Forwarded-For"   => "192.168.50.1",
+    }
+    proxy_body = URI::Params.encode({"csrf_token" => proxy_session.csrf_token})
+    proxy_response = patty_request(
+      "POST", "/logout", proxy_body, proxy_cookie,
+      request_headers: proxy_headers, remote_ip: "127.0.0.1")
+    proxy_response.status_code.should eq 302
+  end
+
+  it "uses Secure strict cookies only for trusted HTTPS proxy requests" do
+    fresh_home!
+    Patty::Auth.set_password("configured-password")
+    headers = HTTP::Headers{
+      "Host"              => "patty.example.com",
+      "X-Forwarded-Proto" => "https",
+      "X-Forwarded-For"   => "203.0.113.10",
+    }
+    csrf_response = patty_request(
+      "GET", "/login", request_headers: headers, remote_ip: "127.0.0.1")
+    csrf_response.headers["Set-Cookie"].should contain "Secure"
+    csrf_response.headers["Set-Cookie"].should contain "SameSite=Strict"
+    csrf_response.headers["Strict-Transport-Security"].should contain "max-age"
+
+    spoofed = patty_request(
+      "GET", "/login", request_headers: headers, remote_ip: "203.0.113.20")
+    spoofed.headers["Set-Cookie"].should_not contain "Secure"
+    spoofed.headers.has_key?("Strict-Transport-Security").should be_false
+  end
+
+  it "requires MFA after a valid password when enabled" do
+    fresh_home!
+    Patty::Auth.set_password("configured-password")
+    now = Time.utc
+    session = web_session
+    enrollment = Patty::Auth.begin_enrollment(session, now)
+    code = Patty::Security::TOTP.code(enrollment.secret, now)
+    Patty::Auth.confirm_enrollment(
+      web_context_with_cookie(""),
+      session,
+      code,
+      secure: false,
+      now: now).should_not be_nil
+
+    csrf, form_cookie = auth_form
+    body = URI::Params.encode({
+      "csrf_token" => csrf,
+      "password"   => "configured-password",
+    })
+    response = patty_request("POST", "/login", body, form_cookie)
+
+    response.status_code.should eq 302
+    response.headers["Location"].should eq "/login/mfa"
+    response.headers["Set-Cookie"].should contain Patty::Auth::MFA_CHALLENGE_COOKIE
+    response.headers["Set-Cookie"].should_not contain Patty::Auth::SESSION_COOKIE
   end
 end
 

@@ -1,0 +1,19 @@
+<h1>Set Up Authenticator</h1>
+
+<div class="panel">
+  <p>Scan this QR code with Google Authenticator, Microsoft Authenticator, 1Password, or another TOTP app.</p>
+  <div class="qr-code"><%= enrollment.qr_svg %></div>
+  <p class="kv"><span class="k">Manual key</span> <code class="secret-code"><%= h(enrollment.manual_key) %></code></p>
+  <p class="hint">Patty uses a six-digit code that changes every 30 seconds.</p>
+
+  <form method="post" action="/settings/security/mfa/confirm">
+    <input type="hidden" name="csrf_token" value="<%= csrf %>">
+    <label for="code">Current authenticator code</label>
+    <input type="text" id="code" name="code" inputmode="numeric"
+           autocomplete="one-time-code" pattern="[0-9]{6}" required autofocus>
+    <p style="margin-top: 1rem;">
+      <button class="btn primary" type="submit">Enable MFA</button>
+      <a class="btn" href="/settings">Cancel</a>
+    </p>
+  </form>
+</div>

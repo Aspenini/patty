@@ -3,24 +3,25 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Patty — Login</title>
+  <title>Patty - Authenticator</title>
   <link rel="icon" type="image/png" href="/static/icon.png">
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
   <div class="auth-wrap">
     <h1 class="auth-title"><img src="/static/icon.png" alt="">Patty</h1>
-    <p class="empty">Pick your Caddy.</p>
+    <p class="empty">Enter an authenticator or recovery code.</p>
     <% if error %>
       <div class="flash flash-error"><%= h(error.to_s) %></div>
     <% end %>
     <div class="panel">
-      <form method="post" action="/login">
+      <form method="post" action="/login/mfa">
         <input type="hidden" name="csrf_token" value="<%= csrf_form %>">
-        <label for="password">Admin password</label>
-        <input type="password" id="password" name="password" autocomplete="current-password" autofocus required>
+        <label for="code">Authenticator or recovery code</label>
+        <input type="text" id="code" name="code" inputmode="numeric"
+               autocomplete="one-time-code" autofocus required>
         <p style="margin-top: 1rem;">
-          <button class="btn primary" type="submit">Log in</button>
+          <button class="btn primary" type="submit">Verify</button>
         </p>
       </form>
     </div>

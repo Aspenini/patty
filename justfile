@@ -46,16 +46,16 @@ run: build
 run: build
     ./bin/patty run
 
-# Remove build output and installed project dependencies.
+# Remove generated build output.
 [windows]
 clean:
     Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -like "$PWD\bin\*" } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
     Start-Sleep -Milliseconds 200
-    @("bin", "dist", "lib", ".shards") | Where-Object { Test-Path $_ } | ForEach-Object { Remove-Item -LiteralPath $_ -Recurse -Force }
+    @("bin", "dist") | Where-Object { Test-Path $_ } | ForEach-Object { Remove-Item -LiteralPath $_ -Recurse -Force }
 
 [unix]
 clean:
-    rm -rf bin dist lib .shards
+    rm -rf bin dist
 
 alias b := build
 alias r := run

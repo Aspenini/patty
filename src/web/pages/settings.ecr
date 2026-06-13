@@ -39,7 +39,10 @@
            target="_blank" rel="noopener">Open forwarded dashboard</a>
       </p>
     <% end %>
-    <p class="hint">The dashboard still requires the Patty admin password. Public DNS and ports 80/443 must point to this Caddy server.</p>
+    <p class="hint">Public forwarding requires HTTPS. The dashboard still requires Patty authentication, and public DNS plus ports 80/443 must point to this Caddy server.</p>
+    <% if config.caddy.dashboard_address && !mfa_enabled %>
+      <div class="flash flash-warn">This dashboard is forwarded publicly without MFA. Enable an authenticator below before relying on it.</div>
+    <% end %>
 
     <div class="checkbox-row">
       <input type="checkbox" id="validate_before_reload" name="validate_before_reload"
@@ -59,11 +62,67 @@
 </div>
 
 <div class="panel">
+  <h2>Security</h2>
+  <p class="kv"><span class="k">Password storage</span> bcrypt-SHA256, cost 12</p>
+  <p class="kv"><span class="k">Authenticator</span>
+    <span class="badge <%= mfa_enabled ? "ok" : "warn" %>"><%= mfa_enabled ? "enabled" : "not enabled" %></span>
+  </p>
+  <p class="kv"><span class="k">Secret protection</span> <%= h(secret_store.backend) %></p>
+  <% if warning = secret_store.warning %>
+    <div class="flash flash-warn"><%= h(warning) %></div>
+  <% end %>
+
+  <% if mfa_enabled %>
+    <p class="kv"><span class="k">Recovery codes remaining</span> <%= recovery_count %></p>
+
+    <h3>Generate New Recovery Codes</h3>
+    <form method="post" action="/settings/security/mfa/regenerate">
+      <input type="hidden" name="csrf_token" value="<%= csrf %>">
+      <label for="recovery_password">Current password</label>
+      <input type="password" id="recovery_password" name="password" autocomplete="current-password" required>
+      <label for="recovery_code">Authenticator or recovery code</label>
+      <input type="text" id="recovery_code" name="code" autocomplete="one-time-code" required>
+      <p><button class="btn" type="submit">Replace recovery codes</button></p>
+    </form>
+
+    <h3>Disable Authenticator</h3>
+    <form method="post" action="/settings/security/mfa/disable">
+      <input type="hidden" name="csrf_token" value="<%= csrf %>">
+      <label for="disable_password">Current password</label>
+      <input type="password" id="disable_password" name="password" autocomplete="current-password" required>
+      <label for="disable_code">Authenticator or recovery code</label>
+      <input type="text" id="disable_code" name="code" autocomplete="one-time-code" required>
+      <p><button class="btn danger" type="submit">Disable MFA</button></p>
+    </form>
+  <% else %>
+    <p class="hint">Use any standard TOTP application, including Google Authenticator.</p>
+    <form method="post" action="/settings/security/mfa/enroll">
+      <input type="hidden" name="csrf_token" value="<%= csrf %>">
+      <label for="enroll_password">Confirm current password</label>
+      <input type="password" id="enroll_password" name="password" autocomplete="current-password" required>
+      <p><button class="btn primary" type="submit">Set up authenticator</button></p>
+    </form>
+  <% end %>
+
+  <h3>Revoke Dashboard Sessions</h3>
+  <form method="post" action="/settings/security/sessions/revoke">
+    <input type="hidden" name="csrf_token" value="<%= csrf %>">
+    <label for="revoke_password">Current password</label>
+    <input type="password" id="revoke_password" name="password" autocomplete="current-password" required>
+    <% if mfa_enabled %>
+      <label for="revoke_code">Authenticator or recovery code</label>
+      <input type="text" id="revoke_code" name="code" autocomplete="one-time-code" required>
+    <% end %>
+    <p><button class="btn" type="submit">Revoke all other sessions</button></p>
+  </form>
+</div>
+
+<div class="panel">
   <h2>Automatic startup</h2>
   <p class="kv"><span class="k">Status</span>
     <span class="badge <%= autostart ? "ok" : "off" %>"><%= autostart ? "installed" : "not installed" %></span>
   </p>
-  <p class="hint">Uses a Scheduled Task on Windows, a LaunchAgent on macOS, or a user systemd unit on Linux.</p>
+  <p class="hint">Uses a per-user startup entry on Windows, a LaunchAgent on macOS, or a user systemd unit on Linux.</p>
   <% if autostart %>
     <form method="post" action="/settings/autostart/uninstall">
       <input type="hidden" name="csrf_token" value="<%= csrf %>">

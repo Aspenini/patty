@@ -33,6 +33,10 @@ module Patty::Util::Paths
     File.join(data_dir, "auth.yml")
   end
 
+  def self.auth_key_file : String
+    File.join(data_dir, "auth.key")
+  end
+
   def self.log_dir : String
     if ENV["PATTY_HOME"]?
       File.join(data_dir, "logs")

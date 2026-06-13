@@ -81,6 +81,12 @@ module Patty::Caddy
       end
     end
 
+    def self.disable_dashboard : Result
+      config = Config.from_yaml(Config.instance.to_yaml)
+      config.caddy.dashboard_address = nil
+      configure_dashboard(config)
+    end
+
     def self.validate_active : Result
       @@mutex.synchronize do
         backend.bootstrap!

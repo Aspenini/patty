@@ -12,6 +12,10 @@ shards:
     git: https://github.com/kemalcr/kemal.git
     version: 1.11.0
 
+  qr-code:
+    git: https://github.com/spider-gazelle/qr-code.git
+    version: 1.0.3
+
   radix:
     git: https://github.com/luislavena/radix.git
     version: 0.4.1

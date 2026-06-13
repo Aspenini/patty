@@ -1,4 +1,5 @@
 require "./spec_helper"
+require "crypto/bcrypt/password"
 
 private def auth_context(session_token : String? = nil) : HTTP::Server::Context
   headers = HTTP::Headers.new
@@ -27,13 +28,23 @@ describe Patty::Auth do
 
   it "authenticates legacy credential files without a generation" do
     fresh_home!
-    Patty::Auth.set_password("legacy-password")
-    data = YAML.parse(File.read(Patty::Util::Paths.auth_file))
-    legacy = {"password_hash" => data["password_hash"].as_s}
+    legacy = {
+      "password_hash" => Crypto::Bcrypt::Password.create("legacy-password", cost: 12).to_s,
+    }
     Patty::Util::AtomicFile.write(Patty::Util::Paths.auth_file, legacy.to_yaml, permissions: 0o600)
 
     Patty::Auth.verify_password("legacy-password").should be_true
+    Patty::Auth.password_algorithm.should eq Patty::Auth::PASSWORD_ALGORITHM
     session = Patty::Auth.create_session(auth_context)
     Patty::Auth.session_for(auth_context(session.token)).should_not be_nil
+  end
+
+  it "pre-hashes long passwords before bcrypt" do
+    fresh_home!
+    prefix = "a" * 72
+    Patty::Auth.set_password(prefix + "-correct-tail")
+
+    Patty::Auth.verify_password(prefix + "-correct-tail").should be_true
+    Patty::Auth.verify_password(prefix + "-wrong-tail").should be_false
   end
 end

@@ -1,5 +1,6 @@
 # Specs run against an isolated PATTY_HOME so they never touch real data.
 ENV["PATTY_HOME"] = File.join(Dir.tempdir, "patty-spec-#{Random::Secure.hex(6)}")
+ENV["PATTY_SECRET_STORE"] = "fallback"
 
 require "spec"
 require "yaml"
@@ -11,6 +12,11 @@ require "../src/util/atomic_file"
 require "../src/util/process_runner"
 require "../src/util/logging"
 require "../src/core/result"
+require "../src/security/constant_time"
+require "../src/security/totp"
+require "../src/security/login_limiter"
+require "../src/security/request_security"
+require "../src/security/secret_store"
 require "../src/install/autostart"
 require "../src/caddy/dashboard_address"
 require "../src/config"
@@ -23,6 +29,7 @@ require "../src/profiles/store"
 require "../src/caddy/backend"
 require "../src/caddy/portable_backend"
 require "../src/caddy/snippets"
+require "../src/auth"
 require "../src/caddy/dashboard_route"
 require "../src/caddy/runtime"
 require "../src/caddy/validator"
@@ -36,7 +43,6 @@ require "../src/services/manager"
 require "../src/core/health"
 require "../src/core/actions"
 require "../src/core/watchdog"
-require "../src/auth"
 
 Spec.after_suite do
   FileUtils.rm_rf(ENV["PATTY_HOME"])
@@ -52,6 +58,7 @@ def fresh_home!
   FileUtils.rm_rf(Patty::Util::Paths.data_dir)
   Patty::Util::Paths.ensure_all!
   Patty::Config.reload!
+  Patty::Auth.reset_runtime!
 end
 
 class FakeCaddyRuntime < Patty::Caddy::Runtime

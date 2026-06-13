@@ -46,7 +46,6 @@ RedirectionGuard=yes
 TimeStampsInUTC=yes
 
 [Tasks]
-Name: autostart; Description: "Start Patty automatically when I sign in"; GroupDescription: "Startup:"
 Name: desktopicon; Description: "Create a &desktop shortcut"; GroupDescription: "Shortcuts:"; Flags: unchecked
 
 [Files]
@@ -63,8 +62,6 @@ Name: "{autoprograms}\Patty"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{a
 Name: "{autodesktop}\Patty"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\icons\icon.ico"; AppUserModelID: "Aspenini.Patty"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\patty.exe"; Parameters: "install"; WorkingDir: "{app}"; StatusMsg: "Enabling automatic startup..."; Flags: runhidden; Tasks: autostart
-Filename: "{app}\patty.exe"; Parameters: "uninstall"; WorkingDir: "{app}"; StatusMsg: "Disabling automatic startup..."; Flags: runhidden; Tasks: not autostart
 Filename: "{app}\{#MyAppExeName}"; Description: "Launch Patty"; WorkingDir: "{app}"; Flags: postinstall nowait skipifsilent
 
 [UninstallRun]

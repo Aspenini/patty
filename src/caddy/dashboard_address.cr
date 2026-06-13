@@ -22,6 +22,10 @@ module Patty::Caddy::DashboardAddress
       raise ArgumentError.new("dashboard address must be a hostname or an http(s) URL without a path")
     end
 
+    if uri.scheme == "http" && !local_host?(uri.host.not_nil!)
+      raise ArgumentError.new("public dashboard forwarding requires HTTPS")
+    end
+
     if port = uri.port
       unless (1..65535).includes?(port)
         raise ArgumentError.new("dashboard address port must be between 1 and 65535")
@@ -36,5 +40,13 @@ module Patty::Caddy::DashboardAddress
   def browser_url(value : String) : String
     normalized = normalize(value).not_nil!
     normalized.includes?("://") ? normalized : "https://#{normalized}"
+  end
+
+  private def local_host?(host : String) : Bool
+    normalized = host.downcase
+    normalized == "::1" ||
+      normalized.starts_with?("127.") ||
+      normalized == "localhost" ||
+      normalized.ends_with?(".localhost")
   end
 end

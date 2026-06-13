@@ -226,6 +226,40 @@ input:focus, textarea:focus { outline: none; border-color: var(--accent); }
 }
 .auth-wrap h1 { color: var(--accent); }
 
+.qr-code {
+  display: inline-block;
+  padding: 0.75rem;
+  margin: 0.5rem 0 1rem;
+  border-radius: 8px;
+  background: #fff;
+  line-height: 0;
+}
+
+.qr-code svg {
+  width: min(320px, 80vw);
+  height: auto;
+}
+
+.secret-code {
+  word-break: break-all;
+  user-select: all;
+}
+
+.recovery-codes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 0.65rem;
+  margin: 1rem 0;
+}
+
+.recovery-codes code {
+  display: block;
+  padding: 0.7rem;
+  text-align: center;
+  font-size: 1rem;
+  user-select: all;
+}
+
 .kv { margin: 0.2rem 0; }
 .kv .k { color: var(--muted); display: inline-block; min-width: 9rem; }
 

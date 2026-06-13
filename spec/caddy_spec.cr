@@ -22,11 +22,42 @@ describe Patty::Caddy::DashboardAddress do
       Patty::Caddy::DashboardAddress.normalize("patty.example.com {\nrespond ok\n}")
     end
   end
+
+  it "rejects public plaintext HTTP but permits loopback HTTP" do
+    expect_raises(ArgumentError, /requires HTTPS/) do
+      Patty::Caddy::DashboardAddress.normalize("http://patty.example.com")
+    end
+    Patty::Caddy::DashboardAddress.normalize("http://localhost:7629")
+      .should eq "http://localhost:7629"
+  end
 end
 
 describe Patty::Caddy::DashboardRoute do
+  it "does not render the public route before credentials exist" do
+    fresh_home!
+    config = Patty::Config.instance
+    config.caddy.dashboard_address = "patty.example.com"
+
+    Patty::Caddy::DashboardRoute.dashboard_snippet(config).should be_nil
+  end
+
+  it "reports and removes a stale dashboard snippet without credentials" do
+    fresh_home!
+    config = Patty::Config.instance
+    config.caddy.dashboard_address = "patty.example.com"
+    path = Patty::Caddy::Snippets.path_for(Patty::Caddy::DashboardRoute::ID)
+    Patty::Caddy::Snippets.write(
+      Patty::Caddy::DashboardRoute::ID,
+      "patty.example.com {\n    reverse_proxy 127.0.0.1:7629\n}\n")
+
+    Patty::Caddy::DashboardRoute.sync_file(config).should be_true
+    File.exists?(path).should be_false
+    Patty::Caddy::DashboardRoute.sync_file(config).should be_false
+  end
+
   it "renders a reverse proxy to Patty and avoids profile ID collisions" do
     fresh_home!
+    Patty::Auth.set_password("configured-password")
     config = Patty::Config.instance
     config.caddy.dashboard_address = "patty.example.com"
     config.server.bind = "0.0.0.0"
@@ -77,6 +108,7 @@ end
 describe Patty::Caddy::Manager do
   it "enables and removes the managed dashboard route" do
     fresh_home!
+    Patty::Auth.set_password("configured-password")
     Patty::Caddy.runtime = FakeCaddyRuntime.new
     config = Patty::Config.instance
     config.caddy.dashboard_address = "patty.example.com"

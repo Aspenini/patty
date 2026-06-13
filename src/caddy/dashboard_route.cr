@@ -4,6 +4,7 @@ module Patty::Caddy::DashboardRoute
   ID = "__patty-dashboard"
 
   def dashboard_snippet(config : Config) : String?
+    return nil unless Auth.password_set?
     address = DashboardAddress.normalize(config.caddy.dashboard_address)
     return nil unless address
 
@@ -15,17 +16,18 @@ module Patty::Caddy::DashboardRoute
     end
   end
 
-  def sync_file(config : Config)
+  def sync_file(config : Config) : Bool
     content = dashboard_snippet(config)
     path = Snippets.path_for(ID)
     current = File.read(path) if File.exists?(path)
-    return if current == content
+    return false if current == content
 
     if content
       Snippets.write(ID, content)
     else
       Snippets.remove(ID)
     end
+    true
   end
 
   private def proxy_target(server : Config::ServerSettings) : String

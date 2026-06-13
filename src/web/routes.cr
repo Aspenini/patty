@@ -7,6 +7,8 @@ STYLE_CSS = {{ read_file("#{__DIR__}/static/style.css") }}
 APP_JS    = {{ read_file("#{__DIR__}/static/app.js") }}
 ICON_PNG  = {{ read_file("#{__DIR__}/../../icons/icon.png") }}
 
+Kemal.config.max_request_body_size = 1024 * 1024
+
 macro page(name)
   render "src/web/pages/{{name.id}}.ecr", "src/web/pages/layout.ecr"
 end
@@ -28,10 +30,32 @@ before_all do |env|
   next if env.response.closed?
 
   path = env.request.path
+  apply_security_headers(env)
   next if path.starts_with?("/static/")
 
+  if env.request.method == "POST" && !Patty::Security::RequestSecurity.same_origin?(env)
+    Patty::Util::ActionLog.log(
+      "Security: rejected request origin #{env.request.headers["Origin"]?.to_s.inspect} " \
+      "for host #{env.request.headers["Host"]?.to_s.inspect} from " \
+      "#{Patty::Security::RequestSecurity.client_ip(env)}.")
+    halt env, status_code: 403, response: "Request origin was rejected."
+  end
+
   unless Patty::Auth.password_set?
+    if File.exists?(Patty::Caddy::Snippets.path_for(Patty::Caddy::DashboardRoute::ID))
+      result = Patty::Caddy::Manager.disable_dashboard
+      unless result.ok?
+        halt env, status_code: 503,
+          response: "Patty setup is unavailable until its public dashboard route can be disabled safely."
+      end
+    end
     env.redirect "/setup" unless path == "/setup"
+    if path == "/setup" && env.request.method == "POST"
+      token = env.params.body["csrf_token"]?
+      unless Patty::Auth.valid_form_token?(env, token)
+        halt env, status_code: 403, response: "CSRF token mismatch. Reload the page and try again."
+      end
+    end
     next
   end
 
@@ -39,7 +63,15 @@ before_all do |env|
     env.redirect "/"
     next
   end
-  next if path == "/login"
+  if {"/login", "/login/mfa"}.includes?(path)
+    if env.request.method == "POST"
+      token = env.params.body["csrf_token"]?
+      unless Patty::Auth.valid_form_token?(env, token)
+        halt env, status_code: 403, response: "CSRF token mismatch. Reload the page and try again."
+      end
+    end
+    next
+  end
 
   session = Patty::Auth.session_for(env)
   unless session
@@ -59,11 +91,13 @@ end
 
 get "/static/style.css" do |env|
   env.response.content_type = "text/css"
+  env.response.headers["Cache-Control"] = "public, max-age=86400"
   STYLE_CSS
 end
 
 get "/static/app.js" do |env|
   env.response.content_type = "application/javascript"
+  env.response.headers["Cache-Control"] = "public, max-age=86400"
   APP_JS
 end
 
@@ -71,6 +105,7 @@ end
 
 get "/setup" do |env|
   error = nil
+  csrf_form = Patty::Auth.issue_form_token(env)
   bare_page(:setup)
 end
 
@@ -80,14 +115,16 @@ post "/setup" do |env|
   error =
     if password.size < 8
       "Password must be at least 8 characters."
-    elsif password != confirm
+    elsif !Patty::Security::ConstantTime.equal?(password, confirm)
       "Passwords do not match."
     end
   if error
+    csrf_form = Patty::Auth.issue_form_token(env)
     bare_page(:setup)
   else
     Patty::Auth.set_password(password)
-    Patty::Util::ActionLog.log("Admin password set via first-run setup.")
+    Patty::Util::ActionLog.log(
+      "Security: admin password set from #{Patty::Security::RequestSecurity.client_ip(env)}.")
     Patty::Auth.create_session(env)
     env.redirect "/"
   end
@@ -95,18 +132,69 @@ end
 
 get "/login" do |env|
   error = nil
+  csrf_form = Patty::Auth.issue_form_token(env)
   bare_page(:login)
 end
 
 post "/login" do |env|
+  ip = Patty::Security::RequestSecurity.client_ip(env)
+  decision = Patty::Auth.login_limiter.check(ip)
+  unless decision.allowed
+    env.response.headers["Retry-After"] = decision.retry_after.to_s
+    Patty::Util::ActionLog.log("Security: rate-limited authentication request from #{ip}.")
+    halt env, status_code: 429, response: "Too many authentication attempts. Try again later."
+  end
   password = env.params.body["password"]?.to_s
   if Patty::Auth.verify_password(password)
+    Patty::Auth.login_limiter.success!(ip)
+    if Patty::Auth.mfa_enabled?
+      Patty::Auth.create_mfa_challenge(env, ip)
+      Patty::Util::ActionLog.log("Security: password accepted; MFA required for #{ip}.")
+      env.redirect "/login/mfa"
+    else
+      Patty::Auth.create_session(env)
+      Patty::Util::ActionLog.log("Security: successful login from #{ip}.")
+      env.redirect "/"
+    end
+  else
+    Patty::Auth.login_limiter.failure!(ip)
+    Patty::Util::ActionLog.log("Security: failed login from #{ip}.")
+    error = "Invalid credentials."
+    csrf_form = Patty::Auth.issue_form_token(env)
+    bare_page(:login)
+  end
+end
+
+get "/login/mfa" do |env|
+  ip = Patty::Security::RequestSecurity.client_ip(env)
+  unless Patty::Auth.pending_mfa_challenge?(env, ip)
+    next env.redirect "/login"
+  end
+  error = nil
+  csrf_form = Patty::Auth.issue_form_token(env)
+  bare_page(:login_mfa)
+end
+
+post "/login/mfa" do |env|
+  ip = Patty::Security::RequestSecurity.client_ip(env)
+  decision = Patty::Auth.login_limiter.check(ip)
+  unless decision.allowed
+    env.response.headers["Retry-After"] = decision.retry_after.to_s
+    Patty::Util::ActionLog.log("Security: rate-limited authentication request from #{ip}.")
+    halt env, status_code: 429, response: "Too many authentication attempts. Try again later."
+  end
+  code = env.params.body["code"]?.to_s
+  if Patty::Auth.verify_mfa_challenge(env, ip, code)
+    Patty::Auth.login_limiter.success!(ip)
     Patty::Auth.create_session(env)
+    Patty::Util::ActionLog.log("Security: successful MFA login from #{ip}.")
     env.redirect "/"
   else
-    Patty::Util::ActionLog.log("Failed login attempt.")
-    error = "Wrong password."
-    bare_page(:login)
+    Patty::Auth.login_limiter.failure!(ip)
+    Patty::Util::ActionLog.log("Security: failed MFA login from #{ip}.")
+    error = "Invalid credentials."
+    csrf_form = Patty::Auth.issue_form_token(env)
+    bare_page(:login_mfa)
   end
 end
 
@@ -349,6 +437,9 @@ get "/settings" do |env|
   config = Patty::Config.instance
   errors = [] of String
   autostart = Patty::Install::Autostart.installed?
+  mfa_enabled = Patty::Auth.mfa_enabled?
+  recovery_count = Patty::Auth.recovery_codes_remaining
+  secret_store = Patty::Auth.secret_store_status
   page(:settings)
 end
 
@@ -386,14 +477,123 @@ post "/settings" do |env|
       flash = nil
       csrf = session.csrf_token
       autostart = Patty::Install::Autostart.installed?
+      mfa_enabled = Patty::Auth.mfa_enabled?
+      recovery_count = Patty::Auth.recovery_codes_remaining
+      secret_store = Patty::Auth.secret_store_status
       page(:settings)
     end
   else
     flash = nil
     csrf = session.csrf_token
     autostart = Patty::Install::Autostart.installed?
+    mfa_enabled = Patty::Auth.mfa_enabled?
+    recovery_count = Patty::Auth.recovery_codes_remaining
+    secret_store = Patty::Auth.secret_store_status
     page(:settings)
   end
+end
+
+post "/settings/security/mfa/enroll" do |env|
+  session = Patty::Auth.session_for(env).not_nil!
+  password = env.params.body["password"]?.to_s
+  if Patty::Auth.mfa_enabled?
+    session.flash!("error", "MFA is already enabled.")
+    next env.redirect "/settings"
+  end
+  unless Patty::Auth.verify_password(password)
+    Patty::Util::ActionLog.log(
+      "Security: rejected MFA enrollment from #{Patty::Security::RequestSecurity.client_ip(env)}.")
+    session.flash!("error", "Invalid credentials.")
+    next env.redirect "/settings"
+  end
+  Patty::Auth.begin_enrollment(session)
+  env.redirect "/settings/security/mfa"
+end
+
+get "/settings/security/mfa" do |env|
+  session = Patty::Auth.session_for(env).not_nil!
+  csrf = session.csrf_token
+  flash = session.take_flash
+  enrollment = Patty::Auth.enrollment_for(session)
+  enrollment ? page(:mfa_setup) : env.redirect("/settings")
+end
+
+post "/settings/security/mfa/confirm" do |env|
+  session = Patty::Auth.session_for(env).not_nil!
+  code = env.params.body["code"]?.to_s
+  if new_session = Patty::Auth.confirm_enrollment(env, session, code)
+    Patty::Util::ActionLog.log(
+      "Security: MFA enabled from #{Patty::Security::RequestSecurity.client_ip(env)}.")
+    new_session.flash!("success", "MFA is enabled. Store the recovery codes somewhere safe.")
+    env.redirect "/settings/security/recovery"
+  else
+    session.flash!("error", "The authenticator code was invalid or the enrollment expired.")
+    env.redirect "/settings/security/mfa"
+  end
+end
+
+get "/settings/security/recovery" do |env|
+  session = Patty::Auth.session_for(env).not_nil!
+  csrf = session.csrf_token
+  flash = session.take_flash
+  recovery_codes = session.take_recovery_codes
+  recovery_codes ? page(:recovery_codes) : env.redirect("/settings")
+end
+
+post "/settings/security/mfa/regenerate" do |env|
+  session = Patty::Auth.session_for(env).not_nil!
+  password = env.params.body["password"]?.to_s
+  code = env.params.body["code"]?.to_s
+  unless Patty::Auth.verify_password(password) && Patty::Auth.verify_second_factor(code)
+    Patty::Util::ActionLog.log(
+      "Security: rejected recovery-code regeneration from #{Patty::Security::RequestSecurity.client_ip(env)}.")
+    session.flash!("error", "Invalid credentials.")
+    next env.redirect "/settings"
+  end
+  if new_session = Patty::Auth.regenerate_recovery_codes!(env)
+    Patty::Util::ActionLog.log("Security: MFA recovery codes regenerated.")
+    new_session.flash!("success", "New recovery codes generated. All previous codes are invalid.")
+    env.redirect "/settings/security/recovery"
+  else
+    session.flash!("error", "Recovery codes could not be regenerated.")
+    env.redirect "/settings"
+  end
+end
+
+post "/settings/security/mfa/disable" do |env|
+  session = Patty::Auth.session_for(env).not_nil!
+  password = env.params.body["password"]?.to_s
+  code = env.params.body["code"]?.to_s
+  unless Patty::Auth.verify_password(password) && Patty::Auth.verify_second_factor(code)
+    Patty::Util::ActionLog.log(
+      "Security: rejected MFA disable request from #{Patty::Security::RequestSecurity.client_ip(env)}.")
+    session.flash!("error", "Invalid credentials.")
+    next env.redirect "/settings"
+  end
+  if new_session = Patty::Auth.disable_mfa!(env)
+    Patty::Util::ActionLog.log("Security: MFA disabled.")
+    new_session.flash!("success", "MFA disabled and all other sessions revoked.")
+  end
+  env.redirect "/settings"
+end
+
+post "/settings/security/sessions/revoke" do |env|
+  session = Patty::Auth.session_for(env).not_nil!
+  password = env.params.body["password"]?.to_s
+  code = env.params.body["code"]?.to_s
+  credentials_valid = Patty::Auth.verify_password(password)
+  credentials_valid &&= Patty::Auth.verify_second_factor(code) if Patty::Auth.mfa_enabled?
+  unless credentials_valid
+    Patty::Util::ActionLog.log(
+      "Security: rejected session revocation from #{Patty::Security::RequestSecurity.client_ip(env)}.")
+    session.flash!("error", "Invalid credentials.")
+    next env.redirect "/settings"
+  end
+  Patty::Auth.revoke_sessions!
+  new_session = Patty::Auth.create_session(env)
+  new_session.flash!("success", "All other dashboard sessions were revoked.")
+  Patty::Util::ActionLog.log("Security: all dashboard sessions revoked.")
+  env.redirect "/settings"
 end
 
 post "/settings/autostart/install" do |env|
@@ -486,4 +686,20 @@ private def import_id_for(filename : String) : String
   basename = File.basename(filename)
   stem = File.basename(basename, File.extname(basename))
   Patty::Profiles::IdGenerator.generate(stem, existing)
+end
+
+private def apply_security_headers(env : HTTP::Server::Context)
+  headers = env.response.headers
+  headers["Content-Security-Policy"] =
+    "default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; " \
+    "form-action 'self'; img-src 'self' data:; script-src 'self'; style-src 'self' 'unsafe-inline'"
+  headers["X-Frame-Options"] = "DENY"
+  headers["X-Content-Type-Options"] = "nosniff"
+  headers["Referrer-Policy"] = "same-origin"
+  headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+  headers["Cross-Origin-Opener-Policy"] = "same-origin"
+  headers["Cache-Control"] = "no-store"
+  if Patty::Security::RequestSecurity.https?(env)
+    headers["Strict-Transport-Security"] = "max-age=31536000"
+  end
 end

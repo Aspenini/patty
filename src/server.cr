@@ -4,12 +4,13 @@ module Patty
       config = Config.instance
       Util::Paths.ensure_all!
       Caddy::Manager.backend.bootstrap!
+      dashboard_changed = false
       begin
-        Caddy::DashboardRoute.sync_file(config)
+        dashboard_changed = Caddy::DashboardRoute.sync_file(config)
       rescue ex : ArgumentError
         Util::ActionLog.log("Dashboard route was not applied: #{ex.message}")
       end
-      unless Caddy::Snippets.files.empty?
+      if dashboard_changed || !Caddy::Snippets.files.empty?
         caddy = Caddy::Manager.reload_active
         Util::ActionLog.log(caddy.message)
         if detail = caddy.detail
@@ -20,6 +21,7 @@ module Patty
 
       Kemal.config.host_binding = config.server.bind
       Kemal.config.serve_static = false
+      Kemal.config.max_request_body_size = 1024 * 1024
 
       Util::ActionLog.log("Patty starting on http://#{config.server.bind}:#{config.server.port}")
       unless Auth.password_set?

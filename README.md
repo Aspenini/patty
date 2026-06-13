@@ -43,21 +43,24 @@ shards build --release
 ```
 
 Open <http://127.0.0.1:7629>, set the admin password, and create or import a
-profile. Run `patty install` or use Settings to start Patty automatically
-after sign-in.
+profile. Use Settings to start Patty automatically after sign-in. On Windows,
+this uses the current user's startup registry entry and does not require
+administrator access.
 
 To publish Patty's own dashboard through Caddy, open Settings and enter a
 hostname such as `patty.example.com` under **Dashboard forwarding**. Patty
 validates and manages the reverse-proxy route automatically; clearing the field
-removes it. The admin password remains required. Public DNS and ports 80/443
-still need to point to the Caddy machine.
+removes it. Public forwarding requires HTTPS. The admin password remains
+required, and Patty displays a warning until optional authenticator MFA is
+enabled. Public DNS and ports 80/443 still need to point to the Caddy machine.
 
 On Windows, running Patty also adds a notification-area icon. Double-click it
 to open Patty, or right-click it to open Patty, open the log folder, or exit
 cleanly. `pattyw.exe` is the console-free launcher used by shortcuts and
 automatic startup; `patty.exe` remains the command-line executable.
 
-The Windows installer uses the checked-in `installer/patty.iss`. Build Patty,
+The Windows installer uses the checked-in `installer/patty.iss`. Startup is
+configured later from Patty's Settings page, not by the installer. Build Patty,
 then compile it directly with Inno Setup 7:
 
 ```powershell
@@ -120,6 +123,37 @@ Public file servers without obvious Caddy authentication display a security
 warning. Patty itself binds to `127.0.0.1` by default; keep it there unless
 LAN access is intentional.
 
+## Dashboard Security
+
+Patty is designed to sit behind its locally managed Caddy HTTPS route:
+
+- Passwords are SHA-256 pre-hashed and then bcrypt-hashed at cost 12. Existing
+  bcrypt credentials are upgraded after a successful login.
+- Optional TOTP MFA works with Google Authenticator and other standard
+  authenticator apps. Enrollment provides a QR code, a manual key, and ten
+  one-time recovery codes.
+- TOTP secrets use Windows DPAPI, macOS Keychain, or Linux Secret Service.
+  When no OS vault is available, Patty uses an authenticated AES-256 encrypted
+  local key file and displays a warning.
+- Login attempts are limited per client IP and process-wide. Security events
+  are written to the bounded Patty log without credentials, codes, cookies, or
+  request bodies.
+- Sessions use `HttpOnly`, `SameSite=Strict`, host-only cookies, adding
+  `Secure` behind the trusted local Caddy HTTPS proxy. Sessions expire after
+  two idle hours or seven days total.
+- Patty sends CSP, frame, MIME-sniffing, referrer, permissions, cache, and HSTS
+  protections. Forwarding headers are trusted only from a loopback proxy.
+- The public dashboard route is not published while no valid admin credentials
+  exist. `reset-password` first removes and reloads that route, then clears the
+  password, MFA, and sessions.
+
+Patty never stores or logs plaintext passwords, authenticator codes, recovery
+codes, or TOTP secrets. A submitted password or code must briefly exist in the
+HTTP request and process memory while it is verified; managed memory cannot
+honestly guarantee that every temporary immutable string is immediately
+overwritten. Patty keeps those values narrowly scoped and wipes mutable secret
+buffers where possible.
+
 ## CLI
 
 ```text
@@ -129,13 +163,14 @@ patty doctor          Validate configuration, Caddy, services, and routes
 patty install         Start Patty automatically after sign-in
 patty uninstall       Remove automatic startup
 patty reset-password  Clear the admin password
+patty reset-mfa       Disable MFA using local machine access
 patty version         Show version information
 ```
 
 ## Data And Logs
 
-Patty stores profiles, enabled snippets, backups, configuration, and auth data
-under:
+Patty stores profiles, enabled snippets, backups, configuration, password
+hashes, encrypted MFA metadata, and the fallback encryption key under:
 
 - Windows: `%APPDATA%\Patty`
 - macOS: `~/Library/Application Support/Patty`
@@ -159,7 +194,9 @@ crystal run src/patty.cr -- run
 
 The test suite covers Pattyfile parsing, strict validation, filename IDs,
 imports, storage, transactional lifecycle behavior, platform adapters, route
-health, auth, Caddy rollback, startup generation, logging, and web behavior.
+health, password upgrades, TOTP vectors, MFA and recovery flows, encrypted
+secret tamper detection, throttling, proxy trust, security headers, Caddy
+rollback, startup generation, logging, and web behavior.
 
 ## Release Scope
 

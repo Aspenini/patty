@@ -16,10 +16,12 @@
     <% end %>
     <div class="panel">
       <form method="post" action="/setup">
+        <input type="hidden" name="csrf_token" value="<%= csrf_form %>">
         <label for="password">Admin password</label>
-        <input type="password" id="password" name="password" autofocus required minlength="8">
+        <input type="password" id="password" name="password" autocomplete="new-password" autofocus required minlength="8">
         <label for="password_confirm">Confirm password</label>
-        <input type="password" id="password_confirm" name="password_confirm" required minlength="8">
+        <input type="password" id="password_confirm" name="password_confirm" autocomplete="new-password" required minlength="8">
+        <p class="hint">Use a long, unique passphrase. Eight characters is only the minimum.</p>
         <p style="margin-top: 1rem;">
           <button class="btn primary" type="submit">Set Password</button>
         </p>

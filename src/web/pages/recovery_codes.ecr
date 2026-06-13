@@ -1,0 +1,12 @@
+<h1>MFA Recovery Codes</h1>
+
+<div class="panel">
+  <div class="flash flash-warn">These codes are shown once. Store them somewhere separate from this computer.</div>
+  <div class="recovery-codes">
+    <% recovery_codes.not_nil!.each do |code| %>
+      <code><%= h(code) %></code>
+    <% end %>
+  </div>
+  <p class="hint">Each code works once and can be entered instead of an authenticator code.</p>
+  <p><a class="btn primary" href="/settings">I saved these codes</a></p>
+</div>
