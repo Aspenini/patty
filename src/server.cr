@@ -1,3 +1,5 @@
+require "./windows/stop_event"
+
 module Patty
   module Server
     def self.start
@@ -28,10 +30,8 @@ module Patty
         puts "First run: open http://#{config.server.bind}:#{config.server.port} to set an admin password."
       end
       Kemal.run(config.server.port) do
-        Windows::Tray.start
+        Windows::StopEvent.start
       end
-    ensure
-      Windows::Tray.stop
     end
   end
 end

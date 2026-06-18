@@ -10,7 +10,8 @@
   --warn: #e0a93a;
   --err: #e05c5c;
   --border: #32364455;
-  --radius: 10px;
+  --radius: 8px;
+  --shadow: 0 16px 36px rgba(0, 0, 0, 0.22);
 }
 
 * { box-sizing: border-box; }
@@ -25,6 +26,13 @@ body {
 
 a { color: var(--accent-2); text-decoration: none; }
 a:hover { text-decoration: underline; }
+a:focus-visible,
+.btn:focus-visible,
+.nav-toggle:focus-visible,
+button.linklike:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 
 code, pre {
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
@@ -43,6 +51,9 @@ pre.snippet {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 20;
   padding: 0.7rem 1.4rem;
   background: var(--panel);
   border-bottom: 1px solid var(--border);
@@ -71,6 +82,34 @@ pre.snippet {
   align-items: center;
   gap: 1rem;
 }
+
+.nav-toggle {
+  display: none;
+  width: 2.4rem;
+  height: 2.4rem;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 4px;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.nav-toggle span {
+  display: block;
+  width: 1.15rem;
+  height: 2px;
+  background: currentColor;
+  border-radius: 999px;
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
+
+.topbar.nav-open .nav-toggle span:nth-child(1) { transform: translateY(6px) rotate(45deg); }
+.topbar.nav-open .nav-toggle span:nth-child(2) { opacity: 0; }
+.topbar.nav-open .nav-toggle span:nth-child(3) { transform: translateY(-6px) rotate(-45deg); }
 
 main {
   max-width: 980px;
@@ -136,6 +175,14 @@ main {
 }
 .card h2 { margin: 0 0 0.3rem; font-size: 1.1rem; }
 .card .meta { color: var(--muted); margin: 0.1rem 0; font-size: 0.9rem; }
+.card .meta code { overflow-wrap: anywhere; }
+
+.status-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0.75rem 0 0;
+}
 
 .actions {
   display: flex;
@@ -264,3 +311,123 @@ input:focus, textarea:focus { outline: none; border-color: var(--accent); }
 .kv .k { color: var(--muted); display: inline-block; min-width: 9rem; }
 
 .hint { color: var(--muted); font-size: 0.85rem; margin-top: 0.2rem; }
+
+@media (max-width: 720px) {
+  .topbar {
+    flex-wrap: wrap;
+    gap: 0.7rem;
+    padding: 0.65rem 0.9rem;
+  }
+
+  .brand { min-width: 0; }
+
+  .nav-toggle { display: inline-flex; }
+
+  .topbar .primary-nav {
+    display: none;
+    flex: 0 0 100%;
+    width: 100%;
+    align-items: stretch;
+    gap: 0.15rem;
+    padding: 0.35rem;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+  }
+
+  .topbar.nav-open .primary-nav { display: flex; }
+
+  .primary-nav a,
+  .primary-nav .linklike {
+    display: block;
+    width: 100%;
+    padding: 0.68rem 0.75rem;
+    color: var(--text);
+    text-align: left;
+    border-radius: 6px;
+  }
+
+  .primary-nav a:hover,
+  .primary-nav .linklike:hover {
+    background: #303442;
+    text-decoration: none;
+  }
+
+  .primary-nav form.inline { display: block; }
+
+  main {
+    width: 100%;
+    padding: 1rem 0.9rem 1.3rem;
+  }
+
+  .statusbar {
+    align-items: stretch;
+    flex-wrap: wrap;
+    gap: 0.65rem;
+    padding: 0.9rem;
+  }
+
+  .statusbar > div:first-child {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem;
+  }
+
+  .statusbar .spacer { display: none; }
+
+  .statusbar form.inline {
+    display: block;
+    flex: 1 1 12rem;
+  }
+
+  .statusbar .btn {
+    width: 100%;
+    min-height: 2.4rem;
+    text-align: center;
+  }
+
+  .cards {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.8rem;
+  }
+
+  .card {
+    padding: 0.95rem;
+    box-shadow: var(--shadow);
+  }
+
+  .card h2 {
+    font-size: 1rem;
+    word-break: break-word;
+  }
+
+  .actions {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(7.2rem, 1fr));
+    gap: 0.5rem;
+    margin-top: 0.9rem;
+  }
+
+  .actions form.inline,
+  .actions .btn {
+    display: block;
+    width: 100%;
+  }
+
+  .actions .btn {
+    min-height: 2.35rem;
+    text-align: center;
+  }
+}
+
+@media (max-width: 380px) {
+  .statusbar > div:first-child {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .actions { grid-template-columns: 1fr; }
+}

@@ -18,7 +18,7 @@ build:
     New-Item -ItemType Directory -Force bin | Out-Null
     llvm-rc /FObin/patty.res windows/patty.rc
     $res = (Resolve-Path bin/patty.res).Path; crystal build src/patty.cr --release --no-debug -o bin/patty.exe --link-flags $res
-    $res = (Resolve-Path bin/patty.res).Path; crystal build src/patty.cr --release --no-debug -D windows_gui -o bin/pattyw.exe --link-flags "$res /SUBSYSTEM:WINDOWS"
+    $res = (Resolve-Path bin/patty.res).Path; crystal build src/pattyw.cr --release --no-debug -o bin/pattyw.exe --link-flags "$res /SUBSYSTEM:WINDOWS"
     upx --best --lzma bin/patty.exe bin/pattyw.exe
     $crystalDir = Split-Path (Get-Command crystal).Source; @("gc.dll", "iconv-2.dll", "libcrypto-3-x64.dll", "libssl-3-x64.dll", "pcre2-8.dll", "yaml.dll", "zlib1.dll") | ForEach-Object { Copy-Item (Join-Path $crystalDir $_) bin -Force }
     Remove-Item bin/patty.res

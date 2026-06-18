@@ -18,8 +18,9 @@ just run
 
 Open <http://127.0.0.1:7629>, set an admin password, and add a profile.
 
-Windows: `just run` launches `pattyw.exe` (tray icon, no console). Use
-`patty.exe` from the terminal for CLI commands.
+Windows: `just run` launches `pattyw.exe`, a small tray wrapper that starts
+`patty.exe run` without a console. Use `patty.exe` from the terminal for CLI
+commands.
 
 ## Pattyfiles
 

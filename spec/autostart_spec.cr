@@ -10,7 +10,7 @@ describe Patty::Install::Autostart do
     args.should contain("\"C:\\Program Files\\Patty\\patty.exe\" run")
   end
 
-  it "uses the background launcher when the GUI executable is active" do
+  it "uses the tray wrapper when the GUI executable is active" do
     args = Patty::Install::Autostart.windows_registry_args("C:\\Program Files\\Patty\\pattyw.exe")
 
     args.should contain("\"C:\\Program Files\\Patty\\pattyw.exe\"")

@@ -29,7 +29,7 @@
       <% else %>
         <p class="meta">Caddy only</p>
       <% end %>
-      <p>
+      <p class="status-list">
         <% if service = p.service %>
           <span class="badge <%= service.running? ? "ok" : "off" %>" data-service="<%= p.id %>"><%= service.label %></span>
         <% end %>

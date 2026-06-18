@@ -40,19 +40,10 @@ require "./core/health"
 require "./core/actions"
 require "./core/state"
 require "./core/watchdog"
-require "./windows/tray"
+require "./windows/stop_event"
 require "./web/render"
 require "./web/routes"
 require "./server"
 require "./cli"
 
-{% if flag?(:windows_gui) %}
-  Patty::Util::Paths.ensure_all!
-  File.open(Patty::Util::Paths.log_file, "a") do |log|
-    STDOUT.reopen(log)
-    STDERR.reopen(log)
-  end
-  Patty::Server.start unless Patty::Windows::Tray.open_existing
-{% else %}
-  Patty::CLI.run(ARGV)
-{% end %}
+Patty::CLI.run(ARGV)

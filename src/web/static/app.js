@@ -1,4 +1,54 @@
 // Light status polling — the app works fine without this.
+function initNavMenu() {
+  const topbar = document.querySelector(".topbar");
+  const toggle = document.querySelector(".nav-toggle");
+  const nav = document.getElementById("primary-nav");
+  if (!topbar || !toggle || !nav) return;
+
+  const closeNav = () => {
+    topbar.classList.remove("nav-open");
+    toggle.setAttribute("aria-expanded", "false");
+    toggle.setAttribute("aria-label", "Open navigation menu");
+  };
+
+  const openNav = () => {
+    topbar.classList.add("nav-open");
+    toggle.setAttribute("aria-expanded", "true");
+    toggle.setAttribute("aria-label", "Close navigation menu");
+  };
+
+  toggle.addEventListener("click", () => {
+    if (topbar.classList.contains("nav-open")) {
+      closeNav();
+    } else {
+      openNav();
+    }
+  });
+
+  nav.addEventListener("click", (event) => {
+    if (event.target instanceof Element && event.target.closest("a, button")) closeNav();
+  });
+
+  document.addEventListener("click", (event) => {
+    if (!topbar.contains(event.target)) closeNav();
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeNav();
+  });
+
+  const desktopQuery = window.matchMedia("(min-width: 721px)");
+  const syncDesktop = (event) => {
+    if (event.matches) closeNav();
+  };
+
+  if (desktopQuery.addEventListener) {
+    desktopQuery.addEventListener("change", syncDesktop);
+  } else {
+    desktopQuery.addListener(syncDesktop);
+  }
+}
+
 async function pattyPoll() {
   try {
     const res = await fetch("/api/status");
@@ -38,6 +88,8 @@ async function pattyPoll() {
     // server briefly unavailable; try again next tick
   }
 }
+
+initNavMenu();
 
 if (document.getElementById("caddy-status")) {
   setInterval(pattyPoll, 5000);
