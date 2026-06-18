@@ -1,5 +1,5 @@
 module Patty
-  VERSION = "0.2.0"
+  VERSION = "0.2.1"
 
   # Tiny launcher/recovery CLI (spec §6). Everything else lives in the web UI.
   module CLI

@@ -1,5 +1,5 @@
 name: patty
-version: 0.2.0
+version: 0.2.1
 description: |
   Patty — pick your Caddy. A local/LAN web app for managing installed apps
   and their Caddy routes.

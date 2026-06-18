@@ -1,5 +1,5 @@
 #define MyAppName "Patty"
-#define MyAppVersion "0.2.0"
+#define MyAppVersion "0.2.1"
 #define MyAppPublisher "Aspen Feltner"
 #define MyAppURL "https://github.com/Aspenini/patty"
 #define MyAppExeName "pattyw.exe"
